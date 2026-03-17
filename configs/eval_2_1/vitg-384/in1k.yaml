@@ -13,8 +13,7 @@ experiment:
   data:
     dataset_name: ImageNet
     num_classes: 1000
-    root_path: /your_data_path/
-    image_folder: ImageNet/
+    root_path: /your_data_path/ImageNet_FullSize/240712/061417/
     resolution: 384
   optimization:
     batch_size: 8

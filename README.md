@@ -543,8 +543,9 @@ Rabbat, Michael and Ballas, Nicolas},
 ```bibtex
 @article{murlabadia2026vjepa2_1,
   title={V-JEPA 2.1: Unlocking Dense Features in Video Self-Supervised Learning},
-  author={Mur-Labadia, Lorenzo and Muckley, Matthew and Bar, Amir and Assran, Mahmoud and Sinha, Koustuv and Rabbat, Michael and LeCun, Yann and Ballas, Nicolas and Bardes, Adrien},
-  journal={arXiv preprint arXiv:2603.7364623},
+  author={Mur-Labadia, Lorenzo and Muckley, Matthew and Bar, Amir and Assran, Mahmoud and
+Sinha, Koustuv and Rabbat, Michael and LeCun, Yann and Ballas, Nicolas and Bardes, Adrien},
+  journal={arXiv preprint arXiv:2603.14482},
   year={2026}
 }
 ```

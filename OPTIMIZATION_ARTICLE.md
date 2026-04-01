@@ -619,33 +619,30 @@ forward path was still doing this every call:
 
 That is wasted work. A fixed mask should live with the module.
 
-The retained fix was simple:
-
-- register the causal mask as a buffer,
-- let `.cuda()` / `.to(...)` move it with the module,
-- slice it directly in `forward(...)`,
-- remove the repeated device copy.
-
-That is not glamorous, but it is exactly the sort of cleanup that compounds on
-real model paths.
-
-Measured against `HEAD` on the 3090:
+I checked this path, but it did not survive repeat benchmarking:
 
 | benchmark | baseline | optimized | speedup |
 | --- | ---: | ---: | ---: |
-| `ac_predictor_forward` | 13.3319 ms | 13.0986 ms | 1.02x |
+| `ac_predictor_forward` | 5.7273 ms | 5.5867 ms | 1.82x |
 
-Repeated CUDA runs on the same shape averaged:
+The extrinsics branch regressed:
 
 | benchmark | baseline | optimized | speedup |
 | --- | ---: | ---: | ---: |
-| `ac_predictor_forward` mean | 13.3482 ms | 13.1170 ms | 1.02x |
+| `ac_predictor_forward_extrinsics` | 5.8428 ms | 6.1466 ms | 0.95x |
+
+A larger one-off run was also negative:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_predictor_forward` | 10.3075 ms | 10.3602 ms | 0.99x |
 
 The lesson is straightforward:
 
-1. If a tensor is fixed module state, register it as module state.
-2. Remove repeated host/device transfers before you reach for a custom kernel.
-3. Keep small wins only when they survive repeat measurement.
+1. Repeat measurement beats a single promising run.
+2. Branch-specific regressions matter.
+3. Do not keep a cleanup unless it survives the main path and the common
+   variants.
 
 ## Commands
 

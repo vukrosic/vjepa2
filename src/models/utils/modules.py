@@ -371,14 +371,16 @@ class RoPEAttention(nn.Module):
         width_ids = (ids - tokens_per_frame * frame_ids) - tokens_per_row * height_ids
         return frame_ids, height_ids, width_ids
 
-    def forward(self, x, mask=None, attn_mask=None, T=None, H_patches=None, W_patches=None):
+    def forward(self, x, mask=None, attn_mask=None, T=None, H_patches=None, W_patches=None, rope_d=None, rope_h=None, rope_w=None):
         B, N, C = x.size()
         grid_depth = int(N // (self.grid_size * self.grid_size))
 
         qkv = self.qkv(x).unflatten(-1, (3, self.num_heads, -1)).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, D]
 
-        if mask is not None:
+        if rope_d is not None and rope_h is not None and rope_w is not None:
+            d_mask, h_mask, w_mask = rope_d, rope_h, rope_w
+        elif mask is not None:
             mask = mask.unsqueeze(1)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
         else:
@@ -611,9 +613,19 @@ class Block(nn.Module):
         else:
             self.mlp = MLP(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-    def forward(self, x, mask=None, attn_mask=None, T=None, H_patches=None, W_patches=None):
+    def forward(self, x, mask=None, attn_mask=None, T=None, H_patches=None, W_patches=None, rope_d=None, rope_h=None, rope_w=None):
         if isinstance(self.attn, RoPEAttention):
-            y = self.attn(self.norm1(x), mask=mask, attn_mask=attn_mask, T=T, H_patches=H_patches, W_patches=W_patches)
+            y = self.attn(
+                self.norm1(x),
+                mask=mask,
+                attn_mask=attn_mask,
+                T=T,
+                H_patches=H_patches,
+                W_patches=W_patches,
+                rope_d=rope_d,
+                rope_h=rope_h,
+                rope_w=rope_w,
+            )
         else:
             y = self.attn(self.norm1(x), mask=mask, attn_mask=attn_mask)
         x = x + self.drop_path(y)

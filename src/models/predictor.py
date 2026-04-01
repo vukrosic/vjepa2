@@ -21,6 +21,12 @@ def _get_sorted_target_positions(masks_x, masks_y):
     return target_positions + target_offsets
 
 
+def _get_precomputed_rope_positions(blocks, masks):
+    if not blocks or masks.ndim != 2:
+        return None, None, None
+    return blocks[0].attn.separate_positions(masks.unsqueeze(1))
+
+
 class VisionTransformerPredictor(nn.Module):
     """Vision Transformer"""
 
@@ -245,15 +251,21 @@ class VisionTransformerPredictor(nn.Module):
             x = x[:, : -self.chop_last_n_tokens]
             masks = masks[:, : -self.chop_last_n_tokens]
 
+        rope_d, rope_h, rope_w = None, None, None
+        if self.use_rope:
+            rope_d, rope_h, rope_w = _get_precomputed_rope_positions(self.predictor_blocks, masks)
+
         if has_cls:
             x = torch.cat([x_cls, x], dim=1)
 
         # Fwd prop
         for i, blk in enumerate(self.predictor_blocks):
             if self.use_activation_checkpointing:
-                x = torch.utils.checkpoint.checkpoint(blk, x, masks, None, use_reentrant=False)
+                x = torch.utils.checkpoint.checkpoint(
+                    blk, x, masks, None, None, None, None, rope_d, rope_h, rope_w, use_reentrant=False
+                )
             else:
-                x = blk(x, mask=masks, attn_mask=None)
+                x = blk(x, mask=masks, attn_mask=None, rope_d=rope_d, rope_h=rope_h, rope_w=rope_w)
         x = self.predictor_norm(x)
 
         if has_cls:

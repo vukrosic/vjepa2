@@ -54,6 +54,7 @@ Fair benchmarking in this repo means:
 - otherwise compare against a faithful reconstructed baseline,
 - use the same shapes, dtype, device, and mode,
 - separate microbenchmarks from block-level checks,
+- separate block-level checks from short full-model checks,
 - report neutral and rejected results, not just wins.
 
 Short-loop measurements here usually use:
@@ -63,6 +64,15 @@ Short-loop measurements here usually use:
 - `30-100` timed iterations,
 - realistic `fp16` shapes on an RTX 3090.
 
+The important caveat is that these short-loop measurements answer different
+questions:
+
+- a primitive benchmark tells you whether a local rewrite is even plausible,
+- a block benchmark tells you whether the win survives real module wiring,
+- a short full-model check tells you whether the default path actually moves.
+
+Those are not interchangeable, and the docs below try to keep them separate.
+
 ## Test Strategy
 
 The fast validation stack is:
@@ -71,13 +81,13 @@ The fast validation stack is:
 - block parity tests,
 - small model/predictor parity tests,
 - targeted correctness tests for eval determinism and mixed precision,
-- Triton-specific forward checks where manual kernels are retained.
+- optional manual-kernel checks when a Triton experiment is being evaluated.
 
 Recent retained coverage includes:
 
 - [`tests/models/test_attention_correctness.py`](/workspace/vjepa2/tests/models/test_attention_correctness.py)
-- [`tests/models/test_triton_rope_kernel.py`](/workspace/vjepa2/tests/models/test_triton_rope_kernel.py)
 - [`tests/test_predictor_parity.py`](/workspace/vjepa2/tests/test_predictor_parity.py)
+- [`tests/test_ac_predictor_parity.py`](/workspace/vjepa2/tests/test_ac_predictor_parity.py)
 - [`tests/test_kernel_parity.py`](/workspace/vjepa2/tests/test_kernel_parity.py)
 - [`tests/test_model_block_parity.py`](/workspace/vjepa2/tests/test_model_block_parity.py)
 
@@ -137,7 +147,7 @@ Why it stayed:
 Several RoPE-side changes survived:
 
 - inverse-frequency caching,
-- cached positions,
+- separated-position caching,
 - `einsum` removal in favor of broadcasted multiply,
 - compatibility duplication via `torch.cat`,
 - fused `q/k` rotation reuse.
@@ -145,10 +155,62 @@ Several RoPE-side changes survived:
 These wins are real, but the honest story is mixed:
 
 - they help RoPE blocks,
-- they are often neutral at full-model scale,
+- some are close to neutral at short full-model scale,
 - the action-conditioned path benefits more than the plain encoder path.
 
 That is still useful, but it is not a license to overclaim.
+
+### Faster Multi-Mask `apply_masks`
+
+The retained `apply_masks` win is not the rejected Triton kernel. It is a plain
+PyTorch vectorization that only triggers on the honest common case:
+
+- multiple masks,
+- every mask is 2D,
+- every mask has the same shape.
+
+Instead of launching one `gather` per mask group, the masks are stacked and
+handled by one batched `gather`.
+
+Fresh primitive result on `[32, 1024, 384]`, `4` mask groups of shape
+`[32, 256]`, `fp16`, CUDA:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `apply_masks_multi_2d` | 0.2104 ms | 0.1096 ms | 1.92x |
+
+Why it stayed:
+
+- parity is easy to verify,
+- the speedup is large enough to matter,
+- it improves the real helper without introducing custom-kernel risk.
+
+### Precomputed Masked RoPE Positions
+
+One useful lesson from this pass is that not every worthwhile win needs a custom
+kernel. In the masked RoPE predictor path, the sorted token ids are the same for
+every predictor block in a forward pass, but the old code still decomposed them
+into frame/height/width positions on every block.
+
+The retained fix is simple:
+
+- compute the separated RoPE positions once in the predictor,
+- pass them into each RoPE block,
+- keep the attention math identical.
+
+Short working-tree vs `HEAD` check on a 4-block masked RoPE predictor
+(`B=8`, `N_ctxt=64`, `fp16`, CUDA):
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `predictor_rope_forward` | 13.2590 ms | 12.5633 ms | 1.055x |
+
+That is a modest win, but it is the right kind of modest win:
+
+- real path,
+- real baseline,
+- no functionality change,
+- parity-backed.
 
 ### SDPA Correctness Fixes
 
@@ -163,27 +225,6 @@ Why they matter:
 - eval output is now deterministic when it should be,
 - half-precision RoPE attention works on the main CUDA path,
 - optimization claims are worthless if the path is wrong.
-
-### Manual Kernel Kept: Forward-Only Triton RoPE Rotate
-
-The repo retains a manual Triton kernel for the single-axis unmasked RoPE rotate
-primitive, but only for safe forward/no-grad execution.
-
-Measured on `[8, 16, 1024, 64]`, `fp16`, CUDA:
-
-| kernel | baseline | optimized | speedup |
-| --- | ---: | ---: | ---: |
-| `rotate_queries_or_keys` forward | 0.5608 ms | 0.1989 ms | 2.82x |
-
-Why it stayed:
-
-- forward parity is checked against a pure PyTorch reference,
-- the live training path falls back to PyTorch,
-- gradient parity is exact on the live helper because autograd no longer routes
-  through the Triton kernel.
-
-This is the right way to keep a manual kernel that is useful for inference-style
-execution without pretending it is training-safe when it is not.
 
 ## Rejected Experiments
 
@@ -203,7 +244,8 @@ Why it was rejected:
 Decision:
 
 - no live Triton autograd path,
-- forward-only Triton is allowed,
+- any narrower forward-only Triton path must still earn its place with an
+  independent reference check,
 - training stays on the PyTorch reference path.
 
 ### Rejected: Fused Multi-Axis Q/K Triton Kernel
@@ -240,6 +282,31 @@ Why it was rejected:
 - the narrower “target positions only” cleanup was safer,
 - end-to-end predictor gains were tiny.
 
+### Rejected: Triton `apply_masks` Gather Kernel
+
+A fused Triton gather kernel for [`apply_masks`](/workspace/vjepa2/src/masks/utils.py)
+was prototyped with exact backward semantics via scatter-add.
+
+What looked good:
+
+- direct primitive benchmark improved,
+- backward parity matched exactly,
+- the kernel was straightforward and safe enough to test.
+
+Measured primitive result on `[8, 1024, 384]`, `4` mask groups, `fp16`, CUDA:
+
+| kernel | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `apply_masks` | 0.2958 ms | 0.2611 ms | 1.13x |
+
+Why it was still rejected:
+
+- masked image encoder check: `52.0714 ms -> 52.1849 ms`
+- masked video encoder check: `40.1243 ms -> 40.2205 ms`
+
+So the primitive win was real, but it did not survive a real caller. That means
+it does not belong in the live path.
+
 ## A Good Optimization vs A Bad One
 
 Good optimization:
@@ -266,7 +333,8 @@ If you want to optimize a model like this:
 
 1. Start with Python loops, repeated tensor construction, and needless copies.
 2. Treat SDPA as the baseline winner until profiling proves otherwise.
-3. Add manual kernels only for small, repeated primitives around attention.
+3. Add manual kernels only for small, repeated primitives around attention after
+   a plain PyTorch rewrite stops winning.
 4. Never trust a forward-only win on a training path without gradient checks.
 5. Keep a permanent record of rejected experiments so you do not rediscover the
    same dead ends.
@@ -275,9 +343,10 @@ If you want to optimize a model like this:
 
 The best remaining candidates are:
 
-1. A fused `apply_masks` manual gather kernel on the masked encoder path.
-2. Action-conditioned path cleanup where `cat` and small tensor glue still show
+1. Action-conditioned path cleanup where `cat` and small tensor glue still show
    up in profiles.
+2. Masked-path tensor glue beyond the current `apply_masks` and predictor RoPE
+   wins, but only if it survives caller-level checks.
 3. Larger model-level forward/backward measurements on real training shapes to
    confirm which block-level wins matter.
 
@@ -288,18 +357,12 @@ Representative retained validation:
 ```bash
 cd /workspace/vjepa2
 pytest -q \
-  tests/models/test_triton_rope_kernel.py \
   tests/models/test_attention_correctness.py \
   tests/test_predictor_parity.py \
   tests/test_kernel_parity.py \
   tests/models/test_ac_rope_attention.py \
   tests/test_model_block_parity.py
 ```
-
-Representative manual-kernel measurement:
-
-- pure PyTorch RoPE rotate baseline vs Triton forward kernel on CUDA `fp16`
-- live gradient parity check through [`rotate_queries_or_keys`](/workspace/vjepa2/src/models/utils/modules.py)
 
 ## Final Rule
 

@@ -6,6 +6,13 @@ It is intentionally written like a tutorial blog post, not a terse changelog.
 The goal is to make each speedup reproducible, explain why it is safe, and show
 how to measure it against a baseline before keeping it.
 
+One important framing rule for the whole document:
+
+- primitive wins are not automatically block wins,
+- block wins are not automatically default-path model wins,
+- short forward-only checks are useful for exploration, but they are not enough
+  to claim a broad training-speed result on their own.
+
 ## Scope
 
 Constraints for this pass:
@@ -511,6 +518,195 @@ The `src` predictor still had a set of cheap-but-frequent tensor operations:
 - context tokens duplicated with `repeat`,
 - token reorder implemented by Python loops plus `torch.stack`.
 
+## Step 8: Multi-Mask `apply_masks` Fast Path
+
+### Why this was examined
+
+After the earlier rejected Triton `apply_masks` experiment, the primitive itself
+was still clearly worth revisiting in plain PyTorch.
+
+The live helper in [`src/masks/utils.py`](/workspace/vjepa2/src/masks/utils.py)
+still did a Python loop over mask groups and launched one `gather` per mask:
+
+```python
+all_x = []
+for m in masks:
+    mask_keep = m.unsqueeze(-1).expand(*m.shape, x.size(-1))
+    all_x += [torch.gather(x, dim=1, index=mask_keep)]
+return torch.cat(all_x, dim=0)
+```
+
+That is fine for one mask group. It is wasteful for the common case where:
+
+- every mask is 2D,
+- every mask has the same shape,
+- the only difference is which indices each group selects.
+
+### Optimization idea
+
+If every mask has shape `[B, K]`, stack them into `[M, B, K]`, broadcast `x`
+once to `[M, B, N, D]`, and issue a single batched `gather`.
+
+The retained implementation keeps all old behavior:
+
+- empty mask lists still return a valid empty result,
+- the single-mask case stays on the simple path,
+- 1D masks keep the old fallback behavior,
+- `concat=False` still returns a list.
+
+Only the same-shape multi-2D case takes the new stacked fast path.
+
+### Benchmark
+
+Primitive benchmark command:
+
+```bash
+cd /workspace/vjepa2
+python benchmarks/kernel_speedups.py
+```
+
+Fresh result on `[32, 1024, 384]`, `4` mask groups of shape `[32, 256]`, `fp16`, CUDA:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `apply_masks_multi_2d` | 0.2104 ms | 0.1096 ms | 1.92x | 47.89% |
+
+### Why it was kept
+
+- It is a real win on the surviving live shape, not only on a synthetic helper.
+- It avoids the complexity of the rejected Triton path.
+- Parity is straightforward and now explicitly covered for:
+  - CPU 2D masks,
+  - CUDA 2D masks,
+  - `concat=False`,
+  - the old fallback behavior.
+
+Supporting coverage lives in:
+
+- [`tests/test_kernel_parity.py`](/workspace/vjepa2/tests/test_kernel_parity.py)
+- [`benchmarks/kernel_speedups.py`](/workspace/vjepa2/benchmarks/kernel_speedups.py)
+
+## Step 9: Precompute Masked RoPE Positions Once Per Predictor Forward
+
+### Why this was examined
+
+In the RoPE predictor path, the sorted `masks` tensor is identical for every
+predictor block in the forward pass. But each `RoPEAttention` block was still
+recomputing:
+
+- frame ids,
+- height ids,
+- width ids
+
+from the same sorted token ids every time.
+
+That work is cheap once, but not cheap when repeated across every block. A short
+microcheck on the live helper put one `separate_positions(mask.unsqueeze(1))`
+call at about `0.2622 ms` on the 3090 for a realistic masked shape.
+
+### Optimization idea
+
+Do the decomposition once in [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py),
+then thread the three precomputed tensors through [`Block`](/workspace/vjepa2/src/models/utils/modules.py)
+into [`RoPEAttention`](/workspace/vjepa2/src/models/utils/modules.py).
+
+This is intentionally not a math rewrite. The attention block still uses the
+same RoPE math. The only change is that it receives already-separated position
+tensors instead of recomputing them every block.
+
+### Retained implementation
+
+The live path now:
+
+1. sorts the predictor token ids as before,
+2. computes `rope_d`, `rope_h`, and `rope_w` once,
+3. passes those tensors into each RoPE block,
+4. falls back to the old behavior automatically if the precomputed tensors are
+   absent.
+
+### Benchmark
+
+Short working-tree vs `HEAD` benchmark:
+
+```bash
+cd /workspace/vjepa2
+python - <<'PY'
+import torch
+from benchmarks.baseline_compare import load_module_from_head, benchmark_cuda
+from src.models.predictor import VisionTransformerPredictor
+
+baseline_predictor = load_module_from_head('/workspace/vjepa2', 'src/models/predictor.py', 'baseline_src_predictor_quick2')
+kwargs = dict(
+    img_size=128,
+    patch_size=16,
+    num_frames=1,
+    embed_dim=256,
+    predictor_embed_dim=256,
+    depth=4,
+    num_heads=8,
+    mlp_ratio=4.0,
+    qkv_bias=True,
+    use_mask_tokens=True,
+    num_mask_tokens=2,
+    zero_init_mask_tokens=True,
+    use_rope=True,
+)
+optimized = VisionTransformerPredictor(**kwargs).cuda().half().eval()
+baseline = baseline_predictor.VisionTransformerPredictor(**kwargs).cuda().half().eval()
+baseline.load_state_dict(optimized.state_dict())
+...
+PY
+```
+
+Fresh result on the short masked-RoPE predictor check (`B=8`, `N_ctxt=64`, `depth=4`, `fp16`, CUDA):
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `predictor_rope_forward` | 13.2590 ms | 12.5633 ms | 1.055x | 5.25% |
+
+This is not a dramatic speedup, but it is a real working-tree vs `HEAD` model
+path win on the live masked RoPE predictor path.
+
+### Why it was kept
+
+- It does not change the RoPE math.
+- The precomputed tensors are exactly the output of the existing helper.
+- The win survives a short model-level benchmark instead of stopping at a
+  helper-level microbenchmark.
+
+Supporting coverage:
+
+- [`tests/test_model_block_parity.py`](/workspace/vjepa2/tests/test_model_block_parity.py)
+- [`tests/test_predictor_parity.py`](/workspace/vjepa2/tests/test_predictor_parity.py)
+- [`benchmarks/baseline_compare.py`](/workspace/vjepa2/benchmarks/baseline_compare.py)
+
+## Current Fast Validation Stack
+
+Current short validation command:
+
+```bash
+cd /workspace/vjepa2
+pytest -q \
+  tests/models/test_triton_rope_kernel.py \
+  tests/models/test_attention_correctness.py \
+  tests/test_predictor_parity.py \
+  tests/test_ac_predictor_parity.py \
+  tests/test_kernel_parity.py \
+  tests/models/test_ac_rope_attention.py \
+  tests/test_model_block_parity.py
+```
+
+Current result:
+
+- `30 passed`
+
+That matters because the retained set is now:
+
+- the previous wins that survived earlier review,
+- the new stacked multi-mask `apply_masks` path,
+- the new masked-RoPE predictor precompute path,
+- and not the stale rejected `ac_predictor` cache experiment.
+
 Those are exactly the kind of changes that are worth doing under an
 "instant-test" rule because:
 
@@ -558,8 +754,9 @@ benchmark sweep:
 | --- | ---: | ---: | ---: |
 | `src predictor forward` | 3.5376 ms | 2.7554 ms | 1.284x |
 
-This is not a final training benchmark, but it is enough to keep the change in
-the codebase under the current fast-iteration rule.
+This is not a final training benchmark. It is enough to keep a small local
+cleanup under the current fast-iteration rule, but not enough to advertise a
+large default-path predictor speedup by itself.
 
 ## Step 8: Encoder Single-Mask Fast Path
 
@@ -683,8 +880,9 @@ Result during this pass:
 | `rope_attention_forward` | 5.6462 ms | 4.2448 ms | 1.330x |
 | `ac_rope_attention_forward` | 10.3640 ms | 6.0950 ms | 1.700x |
 
-This is a strong keep. It is exactly the kind of change that fits the current
-optimization rule: local, parity-clean, and positive on the real forward path.
+This is a strong keep at the RoPE block level. It is exactly the kind of change
+that fits the current optimization rule: local, parity-clean, and positive on
+the real forward path that actually uses those RoPE blocks.
 
 ## Step 11: RoPE Frequency Outer Product Without `einsum`
 
@@ -811,7 +1009,8 @@ Result during this pass:
 
 This stays. It keeps the pretrained-compatible behavior, improves the hot
 primitive again, and pushes both RoPE block benchmarks materially farther ahead
-of `HEAD`.
+of `HEAD`. That still does not make it a standalone full-model win claim; it is
+one contributing RoPE-side cleanup inside a stack of related changes.
 
 ## Step 13: Triton RoPE Fast Path Experiment (Rejected)
 
@@ -1040,23 +1239,27 @@ Interpretation:
 
 ## Current Retained Wins
 
-These are the improvements I would currently claim as real:
+These are the improvements I would currently claim as real under the current
+instant-test standard.
+
+That does not mean every row below is a headline default-path model speedup.
+Some are:
+
+- clear main-path wins,
+- clear block-level wins with near-neutral short full-model effect,
+- or correctness/local-cleanup changes that are still worth keeping.
 
 | area | file | result |
 | --- | --- | --- |
 | Action causal mask build | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | large measured win |
-| RoPE inverse-frequency caching | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py), [`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py) | clear measured win on RoPE paths |
-| RoPE cached positions | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py), [`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py) | reduces repeated `arange` overhead |
 | Batch repeat-interleave helper | [`src/utils/tensors.py`](/workspace/vjepa2/src/utils/tensors.py) | clear measured win |
 | Mask gather index expansion | [`src/masks/utils.py`](/workspace/vjepa2/src/masks/utils.py) | moderate measured win |
 | Batched action-token path in `ACRoPEAttention` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong measured win in baseline-vs-`HEAD` block benchmark |
-| RoPE frequency outer-product broadcast | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | clear primitive win and positive RoPE block impact |
-| RoPE compatibility duplication via `cat` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong primitive win and clear RoPE block impact |
-| Fused `qk` RoPE rotation | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | safe block-level win, mild positive/neutral full-model effect |
-| Predictor broadcast/gather cleanup | [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py) | quick directional win, parity-tested |
+| RoPE-side helper cleanups: inverse-frequency caching, separated-position caching, broadcast outer-product, and compatibility duplication via `cat` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py), [`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py) | clear RoPE block wins; individual helper wins should be read as contributing factors, not separate full-model claims |
+| Fused `qk` RoPE rotation | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | safe RoPE block-level win; short full-model checks are near neutral outside the action-conditioned path |
+| Predictor broadcast/gather cleanup | [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py) | safe local cleanup with a positive short directional check; default-path full-model impact is small |
 | Encoder single-mask fast path | [`src/models/vision_transformer.py`](/workspace/vjepa2/src/models/vision_transformer.py) | small positive masked-forward win |
 | `AttentivePooler` query broadcast | [`src/models/attentive_pooler.py`](/workspace/vjepa2/src/models/attentive_pooler.py) | small positive forward-path win |
-| Cached separated RoPE positions | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong measured win in both RoPE block benchmarks |
 | SDPA wrapper + eval correctness | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py), [`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py) | correctness fix, small/neutral perf effect |
 
 ## Test and Benchmark Commands
@@ -1156,6 +1359,45 @@ Specific outcomes:
   microbenchmark looked strong.
 
 This is exactly why the keep/reject loop exists.
+
+## Step 17: Triton `apply_masks` Kernel (Rejected)
+
+I tried a fused Triton gather kernel for [`src/masks/utils.py`](/workspace/vjepa2/src/masks/utils.py).
+
+Design:
+
+- manual Triton forward for packed multi-mask gathers,
+- exact backward through scatter-add,
+- narrow CUDA-only gate,
+- parity-first rollout.
+
+Results:
+
+Primitive benchmark on `[8, 1024, 384]`, `4` mask groups, `fp16`, CUDA:
+
+| kernel | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `apply_masks` | 0.2958 ms | 0.2611 ms | 1.13x |
+
+Backward parity:
+
+- exact match on the short CUDA check.
+
+Caller-level checks:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| masked image encoder | 52.0714 ms | 52.1849 ms | 0.998x |
+| masked video encoder | 40.1243 ms | 40.2205 ms | 0.998x |
+
+Decision:
+
+- reject,
+- revert from the live path,
+- keep the measurement in the notes.
+
+This is a textbook case of a primitive win that does not matter once the whole
+caller is measured.
 
 ## Article Version
 

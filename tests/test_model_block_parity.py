@@ -67,6 +67,22 @@ def test_rope_attention_matches_head_baseline_cpu():
     torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)
 
 
+def test_rope_attention_precomputed_positions_match_dynamic_cpu():
+    kwargs = dict(dim=64, num_heads=4, qkv_bias=True, proj_drop=0.0, attn_drop=0.0, use_sdpa=False, grid_size=4)
+    attn = RoPEAttention(**kwargs).eval()
+
+    B, T, H, W, C = 2, 2, 4, 4, 64
+    x = torch.randn(B, T * H * W, C)
+    mask = torch.randint(0, T * H * W, (B, T * H * W), dtype=torch.int64)
+    rope_d, rope_h, rope_w = attn.separate_positions(mask.unsqueeze(1), H, W)
+
+    with torch.no_grad():
+        dynamic_out = attn(x, mask=mask, H_patches=H, W_patches=W)
+        cached_out = attn(x, mask=mask, H_patches=H, W_patches=W, rope_d=rope_d, rope_h=rope_h, rope_w=rope_w)
+
+    torch.testing.assert_close(dynamic_out, cached_out, atol=1e-5, rtol=1e-5)
+
+
 def test_attentive_pooler_matches_head_baseline_cpu():
     baseline = load_module_from_head(ROOT, "src/models/attentive_pooler.py", "baseline_src_attentive_pooler")
 

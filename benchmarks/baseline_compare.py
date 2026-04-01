@@ -20,6 +20,7 @@ from src.models.utils.modules import (
     rotate_queries_or_keys,
 )
 from src.models.attentive_pooler import AttentivePooler
+from src.models.predictor import VisionTransformerPredictor
 from src.masks.utils import apply_masks
 from src.utils.tensors import repeat_interleave_batch
 
@@ -230,6 +231,45 @@ def compare_attentive_pooler(warmup=20, iters=100):
     }
 
 
+def compare_predictor_rope(baseline_predictor, warmup=10, iters=40):
+    kwargs = dict(
+        img_size=128,
+        patch_size=16,
+        num_frames=1,
+        embed_dim=256,
+        predictor_embed_dim=256,
+        depth=4,
+        num_heads=8,
+        mlp_ratio=4.0,
+        qkv_bias=True,
+        use_mask_tokens=True,
+        num_mask_tokens=2,
+        zero_init_mask_tokens=True,
+        use_rope=True,
+    )
+    optimized = VisionTransformerPredictor(**kwargs).cuda().half().eval()
+    baseline = baseline_predictor.VisionTransformerPredictor(**kwargs).cuda().half().eval()
+    baseline.load_state_dict(optimized.state_dict())
+
+    B, N_ctxt = 8, 64
+    x = torch.randn(B, N_ctxt, kwargs["embed_dim"], device="cuda", dtype=torch.float16)
+    masks_x = [torch.randint(0, 64, (B, N_ctxt), device="cuda", dtype=torch.long)]
+    masks_y = [torch.randint(0, 64, (B, N_ctxt), device="cuda", dtype=torch.long)]
+
+    def baseline_fn():
+        return baseline(x, masks_x, masks_y)
+
+    def optimized_fn():
+        return optimized(x, masks_x, masks_y)
+
+    torch.testing.assert_close(optimized_fn(), baseline_fn(), atol=2e-3, rtol=2e-3)
+    return {
+        "name": "predictor_rope_forward",
+        "baseline_ms": benchmark_cuda(baseline_fn, warmup, iters),
+        "optimized_ms": benchmark_cuda(optimized_fn, warmup, iters),
+    }
+
+
 def compare_rotate_queries_or_keys(warmup=20, iters=200):
     x = torch.randn(8, 16, 1024, 64, device="cuda", dtype=torch.float16)
     pos = torch.arange(1024, device="cuda", dtype=torch.float16).view(1, 1, 1024)
@@ -282,6 +322,7 @@ def main():
 
     baseline_tensors = load_module_from_head(ROOT, "src/utils/tensors.py", "baseline_src_tensors")
     baseline_modules = load_module_from_head(ROOT, "src/models/utils/modules.py", "baseline_src_models_utils_modules")
+    baseline_predictor = load_module_from_head(ROOT, "src/models/predictor.py", "baseline_src_predictor")
 
     rows = [
         compare_action_mask(),
@@ -291,6 +332,7 @@ def main():
         compare_repeat_interleave(baseline_tensors),
         compare_apply_masks(),
         compare_ac_rope_attention(baseline_modules),
+        compare_predictor_rope(baseline_predictor),
         compare_rope_attention(baseline_modules),
     ]
 

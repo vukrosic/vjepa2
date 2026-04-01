@@ -111,6 +111,43 @@ def test_apply_masks_matches_baseline_cuda():
     torch.testing.assert_close(optimized, baseline)
 
 
+def test_apply_masks_no_concat_matches_baseline_cpu():
+    x = torch.randn(2, 8, 4)
+    masks = [torch.tensor([[0, 2, 4], [1, 3, 5]]), torch.tensor([[6, 7, 1], [0, 2, 4]])]
+    baseline = _baseline_apply_masks(x, masks, concat=False)
+    optimized = apply_masks(x, masks, concat=False)
+    assert len(optimized) == len(baseline)
+    for actual, expected in zip(optimized, baseline):
+        torch.testing.assert_close(actual, expected)
+
+
+def test_apply_masks_matches_baseline_cpu_multiple_2d_masks():
+    x = torch.randn(3, 16, 5)
+    masks = [
+        torch.tensor([[0, 2, 4, 6], [1, 3, 5, 7], [8, 9, 10, 11]]),
+        torch.tensor([[12, 13, 14, 15], [0, 4, 8, 12], [1, 5, 9, 13]]),
+        torch.tensor([[3, 6, 9, 12], [2, 5, 8, 11], [0, 7, 10, 15]]),
+    ]
+    baseline = _baseline_apply_masks(x, masks)
+    optimized = apply_masks(x, masks)
+    torch.testing.assert_close(optimized, baseline)
+
+
+def test_apply_masks_no_concat_matches_baseline_cuda():
+    if not torch.cuda.is_available():
+        return
+    x = torch.randn(2, 8, 4, device="cuda")
+    masks = [
+        torch.tensor([[0, 2, 4], [1, 3, 5]], device="cuda"),
+        torch.tensor([[6, 7, 1], [0, 2, 4]], device="cuda"),
+    ]
+    baseline = _baseline_apply_masks(x, masks, concat=False)
+    optimized = apply_masks(x, masks, concat=False)
+    assert len(optimized) == len(baseline)
+    for actual, expected in zip(optimized, baseline):
+        torch.testing.assert_close(actual, expected)
+
+
 def test_rotate_queries_or_keys_matches_baseline_cpu():
     x = torch.randn(2, 3, 8, 12)
     pos = torch.arange(8).view(1, 1, 8)

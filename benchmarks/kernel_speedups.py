@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models.utils.modules import ACRoPEAttention, RoPEAttention, rotate_queries_or_keys
+from src.masks.utils import apply_masks
 
 
 def baseline_rotate_queries_or_keys(x, pos):
@@ -24,6 +25,19 @@ def baseline_rotate_queries_or_keys(x, pos):
     y1, y2 = y.unbind(dim=-1)
     y = torch.stack((-y2, y1), dim=-1).flatten(-2)
     return (x * emb_cos) + (y * emb_sin)
+
+
+def baseline_apply_masks(x, masks, concat=True):
+    all_x = []
+    for m in masks:
+        mask_keep = m.unsqueeze(-1)
+        if m.ndim == 1:
+            mask_keep = mask_keep.unsqueeze(0)
+        mask_keep = mask_keep.expand(*mask_keep.shape[:-1], x.size(-1))
+        all_x += [torch.gather(x, dim=1, index=mask_keep)]
+    if not concat:
+        return all_x
+    return torch.cat(all_x, dim=0)
 
 
 def baseline_rope_attention(module, x, mask=None, T=None, H_patches=None, W_patches=None):
@@ -171,8 +185,25 @@ def main():
 
     results = []
 
+    apply_masks_x = torch.randn(8, 1024, 256, device="cuda", dtype=torch.float16)
+    apply_masks_masks = [
+        torch.randint(0, 1024, (8, 256), device="cuda"),
+        torch.randint(0, 1024, (8, 256), device="cuda"),
+        torch.randint(0, 1024, (8, 256), device="cuda"),
+        torch.randint(0, 1024, (8, 256), device="cuda"),
+    ]
     rotate_x = torch.randn(8, 16, 4096, 24, device="cuda", dtype=torch.float16)
     rotate_pos = torch.arange(4096, device="cuda").view(1, 1, -1)
+    results.append(
+        bench(
+            "apply_masks_multi_2d",
+            lambda: baseline_apply_masks(apply_masks_x, apply_masks_masks),
+            lambda: apply_masks(apply_masks_x, apply_masks_masks),
+            warmup=10,
+            iters=50,
+        )
+    )
+
     results.append(
         bench(
             "rotate_queries_or_keys",

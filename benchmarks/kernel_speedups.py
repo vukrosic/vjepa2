@@ -40,6 +40,25 @@ def baseline_apply_masks(x, masks, concat=True):
     return torch.cat(all_x, dim=0)
 
 
+def benchmark_apply_masks_1d():
+    x = torch.randn(32, 1024, 384, device="cuda", dtype=torch.float16)
+    masks = [
+        torch.randint(0, 1024, (256,), device="cuda", dtype=torch.long),
+        torch.randint(0, 1024, (256,), device="cuda", dtype=torch.long),
+        torch.randint(0, 1024, (256,), device="cuda", dtype=torch.long),
+        torch.randint(0, 1024, (256,), device="cuda", dtype=torch.long),
+    ]
+
+    def baseline():
+        return baseline_apply_masks(x, masks)
+
+    def optimized():
+        return apply_masks(x, masks)
+
+    torch.testing.assert_close(optimized(), baseline())
+    return bench("apply_masks_multi_1d", baseline, optimized, warmup=10, iters=50)
+
+
 def baseline_rope_attention(module, x, mask=None, T=None, H_patches=None, W_patches=None):
     batch, tokens, channels = x.size()
     grid_depth = int(tokens // (module.grid_size * module.grid_size))
@@ -203,6 +222,7 @@ def main():
             iters=50,
         )
     )
+    results.append(benchmark_apply_masks_1d())
 
     results.append(
         bench(

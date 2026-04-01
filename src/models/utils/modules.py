@@ -393,6 +393,16 @@ class RoPEAttention(nn.Module):
                     T, H_patches, W_patches, self.grid_size, x.device
                 )
 
+        prefix_tokens = N - d_mask.size(-1)
+        if prefix_tokens < 0:
+            raise ValueError("RoPE position tensor is longer than the input sequence")
+        if prefix_tokens > 0:
+            q_prefix, q = q[..., :prefix_tokens, :], q[..., prefix_tokens:, :]
+            k_prefix, k = k[..., :prefix_tokens, :], k[..., prefix_tokens:, :]
+            v_prefix, v = v[..., :prefix_tokens, :], v[..., prefix_tokens:, :]
+        else:
+            q_prefix = k_prefix = v_prefix = None
+
         s = 0
         # Rotate depth
         qd, kd = rotate_query_key_pair(q[..., s : s + self.d_dim], k[..., s : s + self.d_dim], pos=d_mask)
@@ -413,6 +423,10 @@ class RoPEAttention(nn.Module):
         else:
             q = torch.cat([qd, qh, qw], dim=-1)
             k = torch.cat([kd, kh, kw], dim=-1)
+        if prefix_tokens > 0:
+            q = torch.cat([q_prefix, q], dim=-2)
+            k = torch.cat([k_prefix, k], dim=-2)
+            v = torch.cat([v_prefix, v], dim=-2)
 
         if attn_mask is not None or self.use_sdpa:
             with torch.backends.cuda.sdp_kernel():
@@ -646,7 +660,13 @@ class CrossAttention(nn.Module):
 
     def forward(self, q, x):
         B, n, C = q.shape
-        q = self.q(q).reshape(B, n, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        if q.stride(0) == 0:
+            # AttentivePooler expands one learned query tensor across the batch.
+            # Project it once and broadcast the result back over the batch.
+            q = self.q(q[:1]).reshape(1, n, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+            q = q.expand(B, -1, -1, -1)
+        else:
+            q = self.q(q).reshape(B, n, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
         B, N, C = x.shape
         kv = self.kv(x).reshape(B, N, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)

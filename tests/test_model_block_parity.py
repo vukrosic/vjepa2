@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models.attentive_pooler import AttentivePooler
-from src.models.utils.modules import ACRoPEAttention, RoPEAttention
+from src.models.utils.modules import ACRoPEAttention, CrossAttention, RoPEAttention
 
 
 def load_module_from_head(repo_root, git_path, module_name):
@@ -83,6 +83,22 @@ def test_rope_attention_precomputed_positions_match_dynamic_cpu():
     torch.testing.assert_close(dynamic_out, cached_out, atol=1e-5, rtol=1e-5)
 
 
+def test_rope_attention_prefix_token_matches_dynamic_cpu():
+    kwargs = dict(dim=96, num_heads=4, qkv_bias=True, proj_drop=0.0, attn_drop=0.0, use_sdpa=False, grid_size=4)
+    attn = RoPEAttention(**kwargs).eval()
+
+    B, H, W, C = 2, 2, 2, 96
+    x = torch.randn(B, (H * W) + 1, C)
+    mask = torch.tensor([[0, 1, 2, 3], [3, 2, 1, 0]], dtype=torch.int64)
+    rope_d, rope_h, rope_w = attn.separate_positions(mask.unsqueeze(1), H, W)
+
+    with torch.no_grad():
+        dynamic_out = attn(x, mask=mask, H_patches=H, W_patches=W)
+        cached_out = attn(x, mask=mask, H_patches=H, W_patches=W, rope_d=rope_d, rope_h=rope_h, rope_w=rope_w)
+
+    torch.testing.assert_close(dynamic_out, cached_out, atol=1e-5, rtol=1e-5)
+
+
 def test_attentive_pooler_matches_head_baseline_cpu():
     baseline = load_module_from_head(ROOT, "src/models/attentive_pooler.py", "baseline_src_attentive_pooler")
 
@@ -105,5 +121,23 @@ def test_attentive_pooler_matches_head_baseline_cpu():
     with torch.no_grad():
         optimized_out = optimized(x)
         reference_out = reference(x)
+
+    torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)
+
+
+def test_cross_attention_broadcast_query_matches_head_baseline_cpu():
+    baseline = load_module_from_head(ROOT, "src/models/utils/modules.py", "baseline_src_modules_test_cross")
+
+    kwargs = dict(dim=384, num_heads=6, qkv_bias=True)
+    optimized = CrossAttention(**kwargs).eval()
+    reference = baseline.CrossAttention(**kwargs).eval()
+    reference.load_state_dict(optimized.state_dict())
+
+    q = torch.randn(1, 4, 384).expand(8, -1, -1)
+    x = torch.randn(8, 256, 384)
+
+    with torch.no_grad():
+        optimized_out = optimized(q, x)
+        reference_out = reference(q, x)
 
     torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)

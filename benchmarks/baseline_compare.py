@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from src.models.utils.modules import (
     ACRoPEAttention,
     Attention,
+    CrossAttention,
     RoPEAttention,
     build_action_block_causal_attention_mask,
     rotate_queries_or_keys,
@@ -231,7 +232,34 @@ def compare_attentive_pooler(warmup=20, iters=100):
     }
 
 
+def compare_cross_attention(warmup=20, iters=100):
+    baseline_modules = load_module_from_head(ROOT, "src/models/utils/modules.py", "baseline_src_models_utils_modules_cross")
+    kwargs = dict(dim=384, num_heads=6, qkv_bias=True)
+    optimized = CrossAttention(**kwargs).cuda().half().eval()
+    baseline = baseline_modules.CrossAttention(**kwargs).cuda().half().eval()
+    baseline.load_state_dict(optimized.state_dict())
+
+    q = torch.randn(1, 4, 384, device="cuda", dtype=torch.float16).expand(8, -1, -1)
+    x = torch.randn(8, 256, 384, device="cuda", dtype=torch.float16)
+
+    def baseline_fn():
+        return baseline(q, x)
+
+    def optimized_fn():
+        return optimized(q, x)
+
+    torch.testing.assert_close(optimized_fn(), baseline_fn(), atol=2e-3, rtol=2e-3)
+    return {
+        "name": "cross_attention_broadcast_query",
+        "baseline_ms": benchmark_cuda(baseline_fn, warmup, iters),
+        "optimized_ms": benchmark_cuda(optimized_fn, warmup, iters),
+    }
+
+
 def compare_predictor_rope(baseline_predictor, warmup=10, iters=40):
+    # This is a targeted predictor-file comparison: only predictor.py comes from
+    # HEAD here, while shared imports still resolve through the working tree.
+    # Treat it as a focused file-level check, not a full repo HEAD replay.
     kwargs = dict(
         img_size=128,
         patch_size=16,
@@ -326,6 +354,7 @@ def main():
 
     rows = [
         compare_action_mask(),
+        compare_cross_attention(),
         compare_attention_block(),
         compare_attentive_pooler(),
         compare_rotate_queries_or_keys(),

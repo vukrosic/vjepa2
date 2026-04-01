@@ -57,6 +57,10 @@ Fair benchmarking in this repo means:
 - separate block-level checks from short full-model checks,
 - report neutral and rejected results, not just wins.
 
+If a benchmark loads only one file from `HEAD` while other imports still come
+from the working tree, say that explicitly. That is a useful check, but it is
+not the same thing as a full repository replay.
+
 Short-loop measurements here usually use:
 
 - CUDA events,
@@ -185,6 +189,25 @@ Why it stayed:
 - the speedup is large enough to matter,
 - it improves the real helper without introducing custom-kernel risk.
 
+### Same-Shape 1D `apply_masks`
+
+The same batched-gather idea also helps when every mask is 1D and the same
+length. That is a separate fast path from the 2D case, and it still shows up in
+helper-style call sites.
+
+Fresh primitive result on `[32, 1024, 384]`, `4` mask groups of length `256`,
+`fp16`, CUDA:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `apply_masks_multi_1d` | 0.2736 ms | 0.1323 ms | 2.07x |
+
+Why it stayed:
+
+- it uses the same exact batching idea as the 2D path,
+- parity is straightforward,
+- it is an extra win, not a replacement for the 2D result.
+
 ### Precomputed Masked RoPE Positions
 
 One useful lesson from this pass is that not every worthwhile win needs a custom
@@ -211,6 +234,10 @@ That is a modest win, but it is the right kind of modest win:
 - real baseline,
 - no functionality change,
 - parity-backed.
+
+This result is for the square masked RoPE predictor case used in the benchmark
+script. Non-square masked predictor parity is now covered in tests, but
+`has_cls=True` remains an upstream edge case that is not generalized here.
 
 ### SDPA Correctness Fixes
 

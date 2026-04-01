@@ -59,6 +59,11 @@ This is the important part:
 - The current comparator covers `build_action_block_causal_attention_mask`,
   `rotate_queries_or_keys`, `repeat_interleave_batch`, `apply_masks`, and
   `attention_block_forward`.
+- The predictor comparison is intentionally narrower: it loads
+  [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py) from
+  `HEAD`, but its shared imports still resolve to the working tree. Treat
+  `predictor_rope_forward` as a targeted file-level comparison, not a full repo
+  replay.
 
 That last point matters because some changes only look good at the primitive
 level but disappear once the whole attention block is measured.
@@ -571,6 +576,14 @@ Fresh result on `[32, 1024, 384]`, `4` mask groups of shape `[32, 256]`, `fp16`,
 | --- | ---: | ---: | ---: | ---: |
 | `apply_masks_multi_2d` | 0.2104 ms | 0.1096 ms | 1.92x | 47.89% |
 
+The same stacked-gather trick also wins for same-shape 1D masks.
+
+Fresh result on `[32, 1024, 384]`, `4` mask groups of length `256`, `fp16`, CUDA:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `apply_masks_multi_1d` | 0.2736 ms | 0.1323 ms | 2.07x | 51.64% |
+
 ### Why it was kept
 
 - It is a real win on the surviving live shape, not only on a synthetic helper.
@@ -664,8 +677,13 @@ Fresh result on the short masked-RoPE predictor check (`B=8`, `N_ctxt=64`, `dept
 | --- | ---: | ---: | ---: | ---: |
 | `predictor_rope_forward` | 13.2590 ms | 12.5633 ms | 1.055x | 5.25% |
 
-This is not a dramatic speedup, but it is a real working-tree vs `HEAD` model
-path win on the live masked RoPE predictor path.
+This is not a dramatic speedup, but it is a real targeted comparison on the
+live masked RoPE predictor path.
+
+This benchmark is still a predictor-file check, not a complete `HEAD` replay of
+every dependency. It is valid for the square masked RoPE predictor case used
+here. Non-square masked predictor parity is now covered in tests, but
+`has_cls=True` remains an upstream edge case that is not generalized here.
 
 ### Why it was kept
 

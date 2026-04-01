@@ -21,10 +21,10 @@ def _get_sorted_target_positions(masks_x, masks_y):
     return target_positions + target_offsets
 
 
-def _get_precomputed_rope_positions(blocks, masks):
+def _get_precomputed_rope_positions(blocks, masks, H_patches=None, W_patches=None):
     if not blocks or masks.ndim != 2:
         return None, None, None
-    return blocks[0].attn.separate_positions(masks.unsqueeze(1))
+    return blocks[0].attn.separate_positions(masks.unsqueeze(1), H_patches, W_patches)
 
 
 class VisionTransformerPredictor(nn.Module):
@@ -253,7 +253,9 @@ class VisionTransformerPredictor(nn.Module):
 
         rope_d, rope_h, rope_w = None, None, None
         if self.use_rope:
-            rope_d, rope_h, rope_w = _get_precomputed_rope_positions(self.predictor_blocks, masks)
+            rope_d, rope_h, rope_w = _get_precomputed_rope_positions(
+                self.predictor_blocks, masks, self.grid_height, self.grid_width
+            )
 
         if has_cls:
             x = torch.cat([x_cls, x], dim=1)
@@ -262,10 +264,29 @@ class VisionTransformerPredictor(nn.Module):
         for i, blk in enumerate(self.predictor_blocks):
             if self.use_activation_checkpointing:
                 x = torch.utils.checkpoint.checkpoint(
-                    blk, x, masks, None, None, None, None, rope_d, rope_h, rope_w, use_reentrant=False
+                    blk,
+                    x,
+                    masks,
+                    None,
+                    None,
+                    self.grid_height,
+                    self.grid_width,
+                    rope_d,
+                    rope_h,
+                    rope_w,
+                    use_reentrant=False,
                 )
             else:
-                x = blk(x, mask=masks, attn_mask=None, rope_d=rope_d, rope_h=rope_h, rope_w=rope_w)
+                x = blk(
+                    x,
+                    mask=masks,
+                    attn_mask=None,
+                    H_patches=self.grid_height,
+                    W_patches=self.grid_width,
+                    rope_d=rope_d,
+                    rope_h=rope_h,
+                    rope_w=rope_w,
+                )
         x = self.predictor_norm(x)
 
         if has_cls:

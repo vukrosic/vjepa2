@@ -123,6 +123,61 @@ def test_precomputed_rope_positions_match_attention_helper():
         torch.testing.assert_close(actual_part, expected_part)
 
 
+def test_precomputed_rope_positions_match_attention_helper_non_square():
+    predictor = VisionTransformerPredictor(
+        img_size=(32, 64),
+        patch_size=16,
+        num_frames=1,
+        embed_dim=96,
+        predictor_embed_dim=96,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=2.0,
+        qkv_bias=True,
+        use_mask_tokens=True,
+        num_mask_tokens=2,
+        zero_init_mask_tokens=True,
+        use_rope=True,
+    ).eval()
+    masks = torch.tensor([[0, 1, 2, 3, 4, 5], [6, 7, 0, 1, 2, 3]], dtype=torch.int64)
+
+    expected = predictor.predictor_blocks[0].attn.separate_positions(
+        masks.unsqueeze(1), predictor.grid_height, predictor.grid_width
+    )
+    actual = _get_precomputed_rope_positions(predictor.predictor_blocks, masks, predictor.grid_height, predictor.grid_width)
+
+    for actual_part, expected_part in zip(actual, expected):
+        torch.testing.assert_close(actual_part, expected_part)
+
+
+def test_src_predictor_rope_has_cls_runs_cpu():
+    predictor = VisionTransformerPredictor(
+        img_size=32,
+        patch_size=16,
+        num_frames=1,
+        embed_dim=96,
+        predictor_embed_dim=96,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=2.0,
+        qkv_bias=True,
+        use_mask_tokens=True,
+        num_mask_tokens=2,
+        zero_init_mask_tokens=True,
+        use_rope=True,
+    ).eval()
+
+    B = 2
+    enc_mask_indices = [torch.tensor([[0, 1], [1, 2]], dtype=torch.int64)]
+    target_mask_indices = [torch.tensor([[2, 3], [0, 3]], dtype=torch.int64)]
+    enc = torch.randn(B, enc_mask_indices[0].size(1) + 1, 96)
+
+    with torch.no_grad():
+        out = predictor(enc, enc_mask_indices, target_mask_indices, has_cls=True)
+
+    assert out.shape == (B, target_mask_indices[0].size(1), 96)
+
+
 def test_sorted_target_positions_match_reverse_argsort():
     masks_x = torch.tensor([[1, 4, 6, 8], [0, 3, 5, 9]], dtype=torch.int64)
     masks_y = torch.tensor([[0, 2, 7], [1, 4, 8]], dtype=torch.int64)

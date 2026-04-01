@@ -111,6 +111,24 @@ def test_apply_masks_matches_baseline_cuda():
     torch.testing.assert_close(optimized, baseline)
 
 
+def test_apply_masks_matches_baseline_cpu_multiple_1d_masks():
+    x = torch.randn(3, 16, 5)
+    masks = [torch.tensor([0, 2, 4, 6]), torch.tensor([1, 3, 5, 7]), torch.tensor([8, 9, 10, 11])]
+    baseline = _baseline_apply_masks(x, masks)
+    optimized = apply_masks(x, masks)
+    torch.testing.assert_close(optimized, baseline)
+
+
+def test_apply_masks_matches_baseline_cuda_multiple_1d_masks():
+    if not torch.cuda.is_available():
+        return
+    x = torch.randn(3, 16, 5, device="cuda")
+    masks = [torch.tensor([0, 2, 4, 6], device="cuda"), torch.tensor([1, 3, 5, 7], device="cuda")]
+    baseline = _baseline_apply_masks(x, masks)
+    optimized = apply_masks(x, masks)
+    torch.testing.assert_close(optimized, baseline)
+
+
 def test_apply_masks_no_concat_matches_baseline_cpu():
     x = torch.randn(2, 8, 4)
     masks = [torch.tensor([[0, 2, 4], [1, 3, 5]]), torch.tensor([[6, 7, 1], [0, 2, 4]])]
@@ -146,6 +164,21 @@ def test_apply_masks_no_concat_matches_baseline_cuda():
     assert len(optimized) == len(baseline)
     for actual, expected in zip(optimized, baseline):
         torch.testing.assert_close(actual, expected)
+
+
+def test_apply_masks_empty_masks_raises():
+    x = torch.randn(2, 8, 4)
+    try:
+        apply_masks(x, [])
+    except RuntimeError as exc:
+        assert "non-empty list of Tensors" in str(exc)
+        return
+    raise AssertionError("expected apply_masks(..., []) to raise")
+
+
+def test_apply_masks_empty_masks_no_concat_returns_empty_list():
+    x = torch.randn(2, 8, 4)
+    assert apply_masks(x, [], concat=False) == []
 
 
 def test_rotate_queries_or_keys_matches_baseline_cpu():

@@ -15,6 +15,12 @@ from src.models.utils.pos_embs import get_2d_sincos_pos_embed, get_3d_sincos_pos
 from src.utils.tensors import repeat_interleave_batch, trunc_normal_
 
 
+def _get_sorted_target_positions(masks_x, masks_y):
+    target_positions = torch.searchsorted(masks_x.contiguous(), masks_y.contiguous(), right=True)
+    target_offsets = torch.arange(masks_y.size(1), device=masks_y.device, dtype=target_positions.dtype).unsqueeze(0)
+    return target_positions + target_offsets
+
+
 class VisionTransformerPredictor(nn.Module):
     """Vision Transformer"""
 
@@ -224,6 +230,9 @@ class VisionTransformerPredictor(nn.Module):
         else:
             masks_x = torch.cat(masks_x, dim=0)
             masks_y = torch.cat(masks_y, dim=0)
+        target_positions = None
+        if self.chop_last_n_tokens == 0 and masks_x.ndim == 2 and masks_y.ndim == 2:
+            target_positions = _get_sorted_target_positions(masks_x, masks_y)
         masks = torch.cat([masks_x, masks_y], dim=1)
 
         # Put tokens in sorted order
@@ -252,9 +261,12 @@ class VisionTransformerPredictor(nn.Module):
 
         # Return output corresponding to target tokens
         if not self.return_all_tokens:
-            reverse_argsort = torch.argsort(argsort, dim=1)  # [B, N]
-            x = torch.gather(x, dim=1, index=reverse_argsort.unsqueeze(-1).expand(-1, -1, x.size(-1)))
-            x = x[:, N_ctxt:]
+            if target_positions is None:
+                reverse_argsort = torch.argsort(argsort, dim=1)  # [B, N]
+                x = torch.gather(x, dim=1, index=reverse_argsort.unsqueeze(-1).expand(-1, -1, x.size(-1)))
+                x = x[:, N_ctxt:]
+            else:
+                x = torch.gather(x, dim=1, index=target_positions.unsqueeze(-1).expand(-1, -1, x.size(-1)))
 
         x = self.predictor_proj(x)
 

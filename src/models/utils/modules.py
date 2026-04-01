@@ -57,6 +57,8 @@ def _get_cached_separated_positions(T, H, W, grid_size, device):
 def rotate_queries_or_keys(x, pos):
     B, num_heads, N, D = x.size()
     assert D % 2 == 0, "Embedding dimension must be a multiple of 2 for block matrix rotation"
+    if pos.dtype != x.dtype:
+        pos = pos.to(dtype=x.dtype)
 
     # -- compute angle for each position
     key = (x.device.type, x.device.index, x.dtype, D)
@@ -215,7 +217,7 @@ class ACRoPEAttention(nn.Module):
 
         # -- compute position of each frame token
         if mask is not None:
-            mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1)
+            mask = mask.unsqueeze(1)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H, W)
             h_mask *= self.grid_size / H
             w_mask *= self.grid_size / W
@@ -277,7 +279,12 @@ class ACRoPEAttention(nn.Module):
         if attn_mask is not None or self.use_sdpa:
             with torch.backends.cuda.sdp_kernel():
                 x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.proj_drop_prob, is_causal=self.is_causal, attn_mask=attn_mask
+                    q,
+                    k,
+                    v,
+                    dropout_p=self.proj_drop_prob if self.training else 0.0,
+                    is_causal=self.is_causal,
+                    attn_mask=attn_mask,
                 )
                 attn = None
         else:
@@ -365,7 +372,7 @@ class RoPEAttention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, D]
 
         if mask is not None:
-            mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1)
+            mask = mask.unsqueeze(1)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
         else:
             if T is None or H_patches is None or W_patches is None:
@@ -401,7 +408,12 @@ class RoPEAttention(nn.Module):
         if attn_mask is not None or self.use_sdpa:
             with torch.backends.cuda.sdp_kernel():
                 x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.proj_drop_prob, is_causal=self.is_causal, attn_mask=attn_mask
+                    q,
+                    k,
+                    v,
+                    dropout_p=self.proj_drop_prob if self.training else 0.0,
+                    is_causal=self.is_causal,
+                    attn_mask=attn_mask,
                 )
                 attn = None
         else:
@@ -448,7 +460,12 @@ class Attention(nn.Module):
         if attn_mask is not None or self.use_sdpa:
             with torch.backends.cuda.sdp_kernel():
                 x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.proj_drop_prob, is_causal=self.is_causal, attn_mask=attn_mask
+                    q,
+                    k,
+                    v,
+                    dropout_p=self.proj_drop_prob if self.training else 0.0,
+                    is_causal=self.is_causal,
+                    attn_mask=attn_mask,
                 )
                 attn = None
         else:

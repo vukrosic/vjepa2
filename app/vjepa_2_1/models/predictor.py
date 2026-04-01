@@ -224,6 +224,7 @@ class VisionTransformerPredictor(nn.Module):
             masks_x = [masks_x]
         if not isinstance(masks_y, list):
             masks_y = [masks_y]
+        single_mask_set = len(masks_x) == 1
 
         B = len(x) // len(masks_x)
 
@@ -231,30 +232,36 @@ class VisionTransformerPredictor(nn.Module):
         _, N_ctxt, D = x.shape
 
         if not self.use_rope:
-            x_pos_embed = self.predictor_pos_embed.repeat(B, 1, 1)
+            x_pos_embed = self.predictor_pos_embed.expand(B, -1, -1)
             x += apply_masks(x_pos_embed, masks_x)
 
         mask_index = mask_index % self.num_mask_tokens
         pred_tokens = self.mask_tokens[mask_index]
-        pred_tokens = pred_tokens.repeat(B, self.num_patches, 1)
+        pred_tokens = pred_tokens.expand(B, self.num_patches, -1)
         pred_tokens = apply_masks(pred_tokens, masks_y)
 
         if not self.use_rope:
-            pos_embs = self.predictor_pos_embed.repeat(B, 1, 1)
+            pos_embs = self.predictor_pos_embed.expand(B, -1, -1)
             pos_embs = apply_masks(pos_embs, masks_y)
-            pos_embs = repeat_interleave_batch(pos_embs, B, repeat=len(masks_x))
-            pred_tokens += pos_embs
+            if not single_mask_set:
+                pos_embs = repeat_interleave_batch(pos_embs, B, repeat=len(masks_x))
+            pred_tokens = pred_tokens + pos_embs
 
-        x = x.repeat(len(masks_x), 1, 1)
+        if not single_mask_set:
+            x = x.unsqueeze(0).expand(len(masks_x), -1, -1, -1).reshape(len(masks_x) * B, N_ctxt, D)
         x = torch.cat([x, pred_tokens], dim=1)
 
-        masks_x = torch.cat(masks_x, dim=0)
-        masks_y = torch.cat(masks_y, dim=0)
+        if single_mask_set:
+            masks_x = masks_x[0]
+            masks_y = masks_y[0]
+        else:
+            masks_x = torch.cat(masks_x, dim=0)
+            masks_y = torch.cat(masks_y, dim=0)
         masks = torch.cat([masks_x, masks_y], dim=1)
 
         argsort = torch.argsort(masks, dim=1)
-        masks = torch.stack([masks[i, row] for i, row in enumerate(argsort)], dim=0)
-        x = torch.stack([x[i, row, :] for i, row in enumerate(argsort)], dim=0)
+        masks = torch.gather(masks, dim=1, index=argsort)
+        x = torch.gather(x, dim=1, index=argsort.unsqueeze(-1).expand(-1, -1, x.size(-1)))
 
         if self.chop_last_n_tokens > 0:
             x = x[:, : -self.chop_last_n_tokens]
@@ -262,9 +269,9 @@ class VisionTransformerPredictor(nn.Module):
 
         if self.modality_embedding:
             if mod == "image":
-                x += self.img_mod_embed.repeat(B, 1, 1)
+                x = x + self.img_mod_embed
             else:
-                x += self.video_mod_embed.repeat(B, 1, 1)
+                x = x + self.video_mod_embed
 
         for i, blk in enumerate(self.predictor_blocks):
             if self.use_activation_checkpointing:
@@ -277,17 +284,13 @@ class VisionTransformerPredictor(nn.Module):
 
         if not self.return_all_tokens:
             reverse_argsort = torch.argsort(argsort, dim=1)
-            x = torch.stack(
-                [x[i, row, :] for i, row in enumerate(reverse_argsort)], dim=0
-            )
+            x = torch.gather(x, dim=1, index=reverse_argsort.unsqueeze(-1).expand(-1, -1, x.size(-1)))
             x = x[:, N_ctxt:, :]
             x = self.predictor_proj(x)
             return x, None
         else:
             reverse_argsort = torch.argsort(argsort, dim=1)
-            x = torch.stack(
-                [x[i, row, :] for i, row in enumerate(reverse_argsort)], dim=0
-            )
+            x = torch.gather(x, dim=1, index=reverse_argsort.unsqueeze(-1).expand(-1, -1, x.size(-1)))
             x_pred = x[:, N_ctxt:, :]
             x_context = x[:, :N_ctxt, :]
             x_pred = self.predictor_proj(x_pred)

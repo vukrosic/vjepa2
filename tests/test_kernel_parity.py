@@ -6,7 +6,7 @@
 import torch
 
 from src.masks.utils import apply_masks
-from src.models.utils.modules import build_action_block_causal_attention_mask, rotate_queries_or_keys
+from src.models.utils.modules import build_action_block_causal_attention_mask, rotate_queries_or_keys, rotate_query_key_pair
 from src.utils.tensors import repeat_interleave_batch
 
 
@@ -51,6 +51,10 @@ def _baseline_rotate_queries_or_keys(x, pos):
     y = torch.stack((-y2, y1), dim=-1)
     y = y.flatten(-2)
     return (x * emb_cos) + (y * emb_sin)
+
+
+def _baseline_rotate_query_key_pair(q, k, pos):
+    return _baseline_rotate_queries_or_keys(q, pos), _baseline_rotate_queries_or_keys(k, pos)
 
 
 def test_action_block_causal_attention_mask_matches_baseline():
@@ -117,6 +121,16 @@ def test_apply_masks_matches_baseline_cpu_multiple_1d_masks():
     baseline = _baseline_apply_masks(x, masks)
     optimized = apply_masks(x, masks)
     torch.testing.assert_close(optimized, baseline)
+
+
+def test_apply_masks_no_concat_matches_baseline_cpu_multiple_1d_masks():
+    x = torch.randn(3, 16, 5)
+    masks = [torch.tensor([0, 2, 4, 6]), torch.tensor([1, 3, 5, 7]), torch.tensor([8, 9, 10, 11])]
+    baseline = _baseline_apply_masks(x, masks, concat=False)
+    optimized = apply_masks(x, masks, concat=False)
+    assert len(optimized) == len(baseline)
+    for actual, expected in zip(optimized, baseline):
+        torch.testing.assert_close(actual, expected)
 
 
 def test_apply_masks_matches_baseline_cuda_multiple_1d_masks():
@@ -197,3 +211,25 @@ def test_rotate_queries_or_keys_matches_baseline_cuda():
     baseline = _baseline_rotate_queries_or_keys(x, pos)
     optimized = rotate_queries_or_keys(x, pos)
     torch.testing.assert_close(optimized, baseline)
+
+
+def test_rotate_query_key_pair_matches_baseline_cpu():
+    q = torch.randn(2, 3, 8, 12)
+    k = torch.randn(2, 3, 8, 12)
+    pos = torch.arange(8).view(1, 1, 8)
+    baseline_q, baseline_k = _baseline_rotate_query_key_pair(q, k, pos)
+    optimized_q, optimized_k = rotate_query_key_pair(q, k, pos)
+    torch.testing.assert_close(optimized_q, baseline_q)
+    torch.testing.assert_close(optimized_k, baseline_k)
+
+
+def test_rotate_query_key_pair_matches_baseline_cuda():
+    if not torch.cuda.is_available():
+        return
+    q = torch.randn(2, 3, 8, 12, device="cuda")
+    k = torch.randn(2, 3, 8, 12, device="cuda")
+    pos = torch.arange(8, device="cuda").view(1, 1, 8)
+    baseline_q, baseline_k = _baseline_rotate_query_key_pair(q, k, pos)
+    optimized_q, optimized_k = rotate_query_key_pair(q, k, pos)
+    torch.testing.assert_close(optimized_q, baseline_q, atol=5e-3, rtol=5e-3)
+    torch.testing.assert_close(optimized_k, baseline_k, atol=5e-3, rtol=5e-3)

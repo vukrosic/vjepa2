@@ -599,7 +599,7 @@ Supporting coverage lives in:
 - [`tests/test_kernel_parity.py`](/workspace/vjepa2/tests/test_kernel_parity.py)
 - [`benchmarks/kernel_speedups.py`](/workspace/vjepa2/benchmarks/kernel_speedups.py)
 
-## Step 9: Precompute Masked RoPE Positions Once Per Predictor Forward
+## Step 9: Rejected Predictor RoPE Position Precompute, Retained Correctness Fixes
 
 ### Why this was examined
 
@@ -617,7 +617,7 @@ That work is cheap once, but not cheap when repeated across every block. A short
 microcheck on the live helper put one `separate_positions(mask.unsqueeze(1))`
 call at about `0.2622 ms` on the 3090 for a realistic masked shape.
 
-### Optimization idea
+### Original optimization idea
 
 Do the decomposition once in [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py),
 then thread the three precomputed tensors through [`Block`](/workspace/vjepa2/src/models/utils/modules.py)
@@ -627,70 +627,53 @@ This is intentionally not a math rewrite. The attention block still uses the
 same RoPE math. The only change is that it receives already-separated position
 tensors instead of recomputing them every block.
 
-### Retained implementation
+### What survived after review
 
-The live path now:
+The precompute itself did not survive.
 
-1. sorts the predictor token ids as before,
-2. computes `rope_d`, `rope_h`, and `rope_w` once,
-3. passes those tensors into each RoPE block,
-4. falls back to the old behavior automatically if the precomputed tensors are
-   absent.
+What stayed in the live path is the correctness cleanup around the same area:
+
+1. predictor RoPE blocks now receive the real `grid_height` and `grid_width`,
+2. non-square masked predictor inputs no longer fall back to square-grid RoPE
+   decomposition,
+3. `has_cls=True` with RoPE no longer crashes because prefix tokens are now
+   handled explicitly in [`RoPEAttention`](/workspace/vjepa2/src/models/utils/modules.py).
 
 ### Benchmark
 
-Short working-tree vs `HEAD` benchmark:
+There are two relevant numbers here.
+
+First, once the predictor path was corrected, the internal dynamic-vs-precompute
+check said the corrected dynamic path was faster than the precomputed one:
 
 ```bash
 cd /workspace/vjepa2
 python - <<'PY'
-import torch
-from benchmarks.baseline_compare import load_module_from_head, benchmark_cuda
-from src.models.predictor import VisionTransformerPredictor
-
-baseline_predictor = load_module_from_head('/workspace/vjepa2', 'src/models/predictor.py', 'baseline_src_predictor_quick2')
-kwargs = dict(
-    img_size=128,
-    patch_size=16,
-    num_frames=1,
-    embed_dim=256,
-    predictor_embed_dim=256,
-    depth=4,
-    num_heads=8,
-    mlp_ratio=4.0,
-    qkv_bias=True,
-    use_mask_tokens=True,
-    num_mask_tokens=2,
-    zero_init_mask_tokens=True,
-    use_rope=True,
-)
-optimized = VisionTransformerPredictor(**kwargs).cuda().half().eval()
-baseline = baseline_predictor.VisionTransformerPredictor(**kwargs).cuda().half().eval()
-baseline.load_state_dict(optimized.state_dict())
+import src.models.predictor as predictor_mod
 ...
 PY
 ```
 
-Fresh result on the short masked-RoPE predictor check (`B=8`, `N_ctxt=64`, `depth=4`, `fp16`, CUDA):
+Measured result on the short masked-RoPE predictor check (`B=8`, `N_ctxt=64`,
+`depth=4`, `fp16`, CUDA):
 
-| benchmark | baseline | optimized | speedup | improvement |
+| benchmark | dynamic corrected path | precomputed variant | speedup | note |
 | --- | ---: | ---: | ---: | ---: |
-| `predictor_rope_forward` | 13.2590 ms | 12.5633 ms | 1.055x | 5.25% |
+| `predictor_rope_internal` | 13.9165 ms | 14.2865 ms | 0.973x | precompute loses |
 
-This is not a dramatic speedup, but it is a real targeted comparison on the
-live masked RoPE predictor path.
+Second, the targeted current-vs-`HEAD` square benchmark also turned negative
+after the correctness fixes were in place:
 
-This benchmark is still a predictor-file check, not a complete `HEAD` replay of
-every dependency. It is valid for the square masked RoPE predictor case used
-here. Non-square masked predictor parity is now covered in tests, but
-`has_cls=True` remains an upstream edge case that is not generalized here.
+| benchmark | `HEAD` square check | current corrected path | speedup |
+| --- | ---: | ---: | ---: |
+| `predictor_rope_forward` | 12.7941 ms | 13.7104 ms | 0.928x |
 
-### Why it was kept
+### Decision
 
-- It does not change the RoPE math.
-- The precomputed tensors are exactly the output of the existing helper.
-- The win survives a short model-level benchmark instead of stopping at a
-  helper-level microbenchmark.
+- reject the precompute optimization,
+- keep the non-square RoPE fix,
+- keep the `has_cls=True` RoPE crash fix,
+- keep the tests that lock those correctness fixes in.
 
 Supporting coverage:
 
@@ -716,13 +699,13 @@ pytest -q \
 
 Current result:
 
-- `30 passed`
+- `34 passed`
 
 That matters because the retained set is now:
 
 - the previous wins that survived earlier review,
-- the new stacked multi-mask `apply_masks` path,
-- the new masked-RoPE predictor precompute path,
+- the new stacked multi-mask `apply_masks` paths for both 2D and 1D cases,
+- the predictor RoPE correctness fixes for non-square inputs and `has_cls=True`,
 - and not the stale rejected `ac_predictor` cache experiment.
 
 Those are exactly the kind of changes that are worth doing under an
@@ -1416,6 +1399,313 @@ Decision:
 
 This is a textbook case of a primitive win that does not matter once the whole
 caller is measured.
+
+## Step 18: Fused `q/k` RoPE Pair Kernel (Retained)
+
+The next clean target was the repeated `rotate_query_key_pair` path in
+[`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py).
+This path already mattered because it is used by both standard RoPE attention
+and the action-conditioned RoPE blocks.
+
+Before this change, the pair helper did two things:
+
+1. concatenated `q` and `k`,
+2. called the single-tensor rotate helper on the temporary packed tensor.
+
+That was correct, but it still paid for a temporary pack and it still rotated
+the two tensors as if they were independent rows.
+
+The new Triton path in
+[`src/models/utils/triton_kernels.py`](/workspace/vjepa2/src/models/utils/triton_kernels.py)
+does the pair directly:
+
+- one kernel launch,
+- one position load,
+- one sin/cos evaluation,
+- two outputs written in the same pass.
+
+### Primitive benchmark
+
+Benchmark shape: `[8, 16, 4096, 24]`, `fp16`, CUDA.
+
+| kernel | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_query_key_pair` | 1.3617 ms | 0.2182 ms | 6.24x |
+
+That is the kind of result that clears the bar immediately.
+
+### Caller-level benchmark
+
+The real check is the module-level inference path under `no_grad`, where this
+pair helper actually gets used.
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_rope_attention_forward` | 2.0785 ms | 1.9283 ms | 1.08x |
+| `rope_attention_forward` | 1.1694 ms | 1.2025 ms | 0.97x |
+
+Decision:
+
+- keep the pair kernel,
+- keep the action-conditioned RoPE win,
+- reject the plain RoPE caller win on this shape because it did not improve.
+
+The result is still useful because the pair kernel is now a real retained win in
+the exact hot path that matters most for action-conditioned attention.
+
+### Validation cleanup
+
+The focused validation after landing this kernel is currently:
+
+```bash
+cd /workspace/vjepa2
+pytest -q \
+  tests/test_kernel_parity.py \
+  tests/test_model_block_parity.py \
+  tests/test_predictor_parity.py \
+  tests/models/test_ac_rope_attention.py \
+  tests/models/test_attention_correctness.py
+```
+
+Result:
+
+- `35 passed`
+
+The small predictor positional-add cleanup also stays in place so `no_grad`
+evaluation does not rely on in-place writes into expanded mask-token views.
+
+## Step 19: Two More Rejections That Looked Plausible
+
+This pass also tested two fresh ideas that are worth recording precisely because
+they did not survive the caller-level filter.
+
+### Rejected: contiguous patch-embed output
+
+Hypothesis:
+
+- [`PatchEmbed`](/workspace/vjepa2/src/models/utils/patch_embed.py) and
+  [`PatchEmbed3D`](/workspace/vjepa2/src/models/utils/patch_embed.py) return
+  `flatten(...).transpose(1, 2)`,
+- that output is non-contiguous,
+- making it contiguous once at the encoder boundary might help the downstream
+  blocks more than it costs at patch embed time.
+
+What the short checks showed:
+
+- patch-embed itself got slower once the explicit copy was added,
+- encoder-level unmasked forward got faster,
+- masked encoder forward regressed.
+
+Measured image encoder numbers (`img_size=128`, `depth=4`, `fp16`, CUDA):
+
+| benchmark | baseline | contiguous variant | speedup |
+| --- | ---: | ---: | ---: |
+| image unmasked | 3.8271 ms | 3.7288 ms | 1.03x |
+| image masked | 3.7480 ms | 3.7693 ms | 0.99x |
+
+Measured video encoder numbers (`num_frames=8`, `depth=4`, `fp16`, CUDA):
+
+| benchmark | baseline | contiguous variant | speedup |
+| --- | ---: | ---: | ---: |
+| video unmasked | 3.8688 ms | 3.5719 ms | 1.08x |
+| video masked | 3.6584 ms | 3.7410 ms | 0.98x |
+
+Backward parity was exact on the short CUDA probe, so correctness was not the
+problem. The problem was that the main masked path did not improve.
+
+Decision:
+
+- reject,
+- keep the measurement,
+- do not spend more time on this unless the target workload shifts toward
+  unmasked inference.
+
+### Rejected: direct mask-token expansion in predictor
+
+Hypothesis:
+
+- the predictor mask token is identical at every patch position,
+- so instead of expanding to `[B, num_patches, D]` and then gathering with
+  [`apply_masks(...)`](/workspace/vjepa2/src/masks/utils.py), expand directly to
+  the target masked shape.
+
+This also required an out-of-place positional add to avoid aliasing when the
+target tensor came from `expand`.
+
+Benchmark script:
+
+- [`benchmarks/predictor_mask_tokens.py`](/workspace/vjepa2/benchmarks/predictor_mask_tokens.py)
+
+Measured result on the short CUDA predictor check:
+
+| benchmark | baseline | direct-expand variant | speedup |
+| --- | ---: | ---: | ---: |
+| predictor mask-token path | 6.6483 ms | 6.7706 ms | 0.98x |
+
+Decision:
+
+- reject,
+- keep the benchmark artifact,
+- leave the live predictor path unchanged.
+
+## Step 20: Port The Proven Predictor Tensor Cleanup To `app/vjepa_2_1`
+
+The explorer pass turned up one clear blind spot: the app-side predictor in
+[`app/vjepa_2_1/models/predictor.py`](/workspace/vjepa2/app/vjepa_2_1/models/predictor.py)
+was still doing exactly the sort of tensor glue that had already been cleaned up
+in `src`:
+
+- `repeat(...)` where broadcasted `expand(...)` is enough,
+- Python row-wise `torch.stack([...])` for permutation,
+- repeated full-tensor copies where `torch.gather(...)` can apply the same
+  index directly.
+
+### What changed
+
+Only the already-proven shape cleanups were ported:
+
+- `repeat(...)` to `expand(...)` where safe,
+- full-batch repeat of context tokens to `unsqueeze + expand + reshape`,
+- row-wise Python `stack` permutations to `torch.gather(...)`,
+- modality embedding application to broadcasted adds instead of explicit
+  `repeat(...)`.
+
+This was intentionally not a math rewrite.
+
+### Parity
+
+Targeted `HEAD` parity:
+
+```bash
+cd /workspace/vjepa2
+pytest -q tests/test_app_predictor_parity.py
+```
+
+Result:
+
+- `1 passed`
+
+The coverage lives in:
+
+- [`tests/test_app_predictor_parity.py`](/workspace/vjepa2/tests/test_app_predictor_parity.py)
+
+### Benchmark
+
+Benchmark CLI:
+
+```bash
+cd /workspace/vjepa2
+python benchmarks/app_predictor_compare.py
+```
+
+Fresh CUDA result:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `app_predictor_forward` | 23.3783 ms | 21.8536 ms | 1.07x | 6.52% |
+
+Supporting benchmark:
+
+- [`benchmarks/app_predictor_compare.py`](/workspace/vjepa2/benchmarks/app_predictor_compare.py)
+
+Decision:
+
+- keep,
+- this is a real app-side forward-path win,
+- and it came from porting already-vetted tensor cleanup instead of inventing a
+  new fragile kernel.
+
+## Step 21: App-Side RoPE Pair Path (Retained)
+
+The next strong win was in the older app model tree:
+
+- [`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py)
+
+This path still had two clear inefficiencies:
+
+1. it recomputed separated RoPE positions for the no-mask path on every call,
+2. it rotated `q` and `k` independently for each RoPE axis instead of handling
+   the pair together.
+
+### What changed
+
+The retained app-side cleanup now:
+
+- caches separated depth/height/width position tensors for the no-mask path,
+- adds a pair-oriented `rotate_query_key_pair(...)` helper,
+- routes app `RoPEAttention` through the pair helper instead of calling the
+  single-tensor rotate helper twice per axis.
+
+This is still pure PyTorch. No new autograd path, no speculative fused multi-
+axis kernel.
+
+### Parity
+
+New targeted coverage:
+
+- [`tests/test_app_rope_module_parity.py`](/workspace/vjepa2/tests/test_app_rope_module_parity.py)
+
+That test file checks:
+
+- the app pair helper,
+- app `RoPEAttention`,
+- app `Block`,
+- all against `HEAD`.
+
+The app predictor parity test also still passes:
+
+- [`tests/test_app_predictor_parity.py`](/workspace/vjepa2/tests/test_app_predictor_parity.py)
+
+Validation command:
+
+```bash
+cd /workspace/vjepa2
+pytest -q tests/test_app_rope_module_parity.py tests/test_app_predictor_parity.py
+```
+
+Result:
+
+- `4 passed`
+
+### Benchmark
+
+Benchmark CLI:
+
+```bash
+cd /workspace/vjepa2
+python benchmarks/app_rope_module_compare.py
+```
+
+Fresh CUDA results:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `rotate_query_key_pair` | 0.9752 ms | 0.5928 ms | 1.65x | 39.21% |
+| `rope_attention_forward` | 4.5426 ms | 2.4995 ms | 1.82x | 44.98% |
+| `rope_block_forward` | 5.0050 ms | 2.8540 ms | 1.75x | 42.98% |
+
+Supporting benchmark:
+
+- [`benchmarks/app_rope_module_compare.py`](/workspace/vjepa2/benchmarks/app_rope_module_compare.py)
+
+Cumulative app predictor check after this step:
+
+```bash
+cd /workspace/vjepa2
+python benchmarks/app_predictor_compare.py
+```
+
+Fresh result:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `app_predictor_forward` | 16.3713 ms | 14.7981 ms | 1.11x | 9.61% |
+
+Decision:
+
+- keep,
+- this is the strongest app-side win so far,
+- and it came from fixing code drift relative to the newer `src` path.
 
 ## Article Version
 

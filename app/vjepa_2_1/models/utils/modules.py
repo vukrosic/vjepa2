@@ -12,6 +12,7 @@ from timm.models.layers import drop_path
 
 _INV_FREQ_CACHE = {}
 _POSITION_CACHE = {}
+_SEPARATED_POS_CACHE = {}
 
 
 def _get_cached_positions(length, device):
@@ -23,11 +24,32 @@ def _get_cached_positions(length, device):
     return positions
 
 
+def _get_cached_separated_positions(T, H_patches, W_patches, device):
+    key = (device.type, device.index, int(T), int(H_patches), int(W_patches))
+    positions = _SEPARATED_POS_CACHE.get(key)
+    if positions is None:
+        ids = _get_cached_positions(int(T * H_patches * W_patches), device)
+        tokens_per_frame = int(H_patches * W_patches)
+        frame_ids = ids // tokens_per_frame
+        ids_in_frame = ids - tokens_per_frame * frame_ids
+        height_ids = ids_in_frame // W_patches
+        width_ids = ids_in_frame - W_patches * height_ids
+        positions = (
+            frame_ids.to(torch.float32),
+            height_ids.to(torch.float32),
+            width_ids.to(torch.float32),
+        )
+        _SEPARATED_POS_CACHE[key] = positions
+    return positions
+
+
 def rotate_queries_or_keys(x, pos, n_registers, has_cls_first):
     B, num_heads, N, D = x.size()
     assert (
         D % 2 == 0
     ), "Embedding dimension must be a multiple of 2 for block matrix rotation"
+    if D == 0:
+        return x
     if pos.dtype != x.dtype:
         pos = pos.to(dtype=x.dtype)
 
@@ -46,7 +68,7 @@ def rotate_queries_or_keys(x, pos, n_registers, has_cls_first):
         omega /= D / 2.0
         omega = 1.0 / 10000**omega
         _INV_FREQ_CACHE[key] = omega
-    freq = torch.einsum("..., f -> ... f", pos, omega)
+    freq = pos.unsqueeze(-1) * omega
 
     emb_sin = freq.sin()
     emb_cos = freq.cos()
@@ -61,15 +83,37 @@ def rotate_queries_or_keys(x, pos, n_registers, has_cls_first):
 
     out_ctx = (x_ctx * emb_cos) + (y * emb_sin)
 
+    if not n_cls and not n_registers:
+        return out_ctx
+
     parts = []
     if n_cls:
         parts.append(x_cls)
     parts.append(out_ctx)
     if n_registers:
         parts.append(x_reg)
-    out = torch.cat(parts, dim=-2)
+    if len(parts) == 1:
+        return parts[0]
+    return torch.cat(parts, dim=-2)
 
-    return out
+
+def rotate_query_key_pair(q, k, pos, n_registers, has_cls_first):
+    if q.size(-1) == 0:
+        return q, k
+
+    if pos.ndim > 1 and pos.shape[0] == q.shape[0]:
+        pos = torch.cat([pos, pos], dim=0)
+
+    qk = torch.cat([q, k], dim=0)
+    qk = rotate_queries_or_keys(
+        qk,
+        pos,
+        n_registers=n_registers,
+        has_cls_first=has_cls_first,
+    )
+    return qk[: q.size(0)], qk[q.size(0) :]
+
+
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
 
@@ -233,10 +277,19 @@ class RoPEAttention(nn.Module):
             d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
         else:
             if T is None or H_patches is None or W_patches is None:
-                mask = _get_cached_positions(int(grid_depth * self.grid_size * self.grid_size), x.device)
+                d_mask, h_mask, w_mask = _get_cached_separated_positions(
+                    grid_depth,
+                    self.grid_size,
+                    self.grid_size,
+                    x.device,
+                )
             else:
-                mask = _get_cached_positions(int(T * H_patches * W_patches), x.device)
-            d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
+                d_mask, h_mask, w_mask = _get_cached_separated_positions(
+                    T,
+                    H_patches,
+                    W_patches,
+                    x.device,
+                )
 
         if self.interpolate_rope:
             if H_patches is None:
@@ -247,39 +300,24 @@ class RoPEAttention(nn.Module):
             w_mask = w_mask * (self.pretrained_grid_size - 1) / (W_patches - 1)
 
         s = 0
-        qd = rotate_queries_or_keys(
+        qd, kd = rotate_query_key_pair(
             q[..., s : s + self.d_dim],
-            pos=d_mask,
-            n_registers=self.n_registers,
-            has_cls_first=self.has_cls_first,
-        )
-        kd = rotate_queries_or_keys(
             k[..., s : s + self.d_dim],
             pos=d_mask,
             n_registers=self.n_registers,
             has_cls_first=self.has_cls_first,
         )
         s += self.d_dim
-        qh = rotate_queries_or_keys(
+        qh, kh = rotate_query_key_pair(
             q[..., s : s + self.h_dim],
-            pos=h_mask,
-            n_registers=self.n_registers,
-            has_cls_first=self.has_cls_first,
-        )
-        kh = rotate_queries_or_keys(
             k[..., s : s + self.h_dim],
             pos=h_mask,
             n_registers=self.n_registers,
             has_cls_first=self.has_cls_first,
         )
         s += self.h_dim
-        qw = rotate_queries_or_keys(
+        qw, kw = rotate_query_key_pair(
             q[..., s : s + self.w_dim],
-            pos=w_mask,
-            n_registers=self.n_registers,
-            has_cls_first=self.has_cls_first,
-        )
-        kw = rotate_queries_or_keys(
             k[..., s : s + self.w_dim],
             pos=w_mask,
             n_registers=self.n_registers,

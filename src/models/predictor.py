@@ -21,12 +21,6 @@ def _get_sorted_target_positions(masks_x, masks_y):
     return target_positions + target_offsets
 
 
-def _get_precomputed_rope_positions(blocks, masks, H_patches=None, W_patches=None):
-    if not blocks or masks.ndim != 2:
-        return None, None, None
-    return blocks[0].attn.separate_positions(masks.unsqueeze(1), H_patches, W_patches)
-
-
 class VisionTransformerPredictor(nn.Module):
     """Vision Transformer"""
 
@@ -222,7 +216,7 @@ class VisionTransformerPredictor(nn.Module):
             pos_embs = apply_masks(pos_embs, masks_y)
             if not single_mask_set:
                 pos_embs = repeat_interleave_batch(pos_embs, B, repeat=len(masks_x))
-            pred_tokens += pos_embs
+            pred_tokens = pred_tokens + pos_embs
 
         # Concatenate context & target tokens
         if not single_mask_set:
@@ -251,12 +245,6 @@ class VisionTransformerPredictor(nn.Module):
             x = x[:, : -self.chop_last_n_tokens]
             masks = masks[:, : -self.chop_last_n_tokens]
 
-        rope_d, rope_h, rope_w = None, None, None
-        if self.use_rope:
-            rope_d, rope_h, rope_w = _get_precomputed_rope_positions(
-                self.predictor_blocks, masks, self.grid_height, self.grid_width
-            )
-
         if has_cls:
             x = torch.cat([x_cls, x], dim=1)
 
@@ -271,9 +259,9 @@ class VisionTransformerPredictor(nn.Module):
                     None,
                     self.grid_height,
                     self.grid_width,
-                    rope_d,
-                    rope_h,
-                    rope_w,
+                    None,
+                    None,
+                    None,
                     use_reentrant=False,
                 )
             else:
@@ -283,9 +271,6 @@ class VisionTransformerPredictor(nn.Module):
                     attn_mask=None,
                     H_patches=self.grid_height,
                     W_patches=self.grid_width,
-                    rope_d=rope_d,
-                    rope_h=rope_h,
-                    rope_w=rope_w,
                 )
         x = self.predictor_norm(x)
 

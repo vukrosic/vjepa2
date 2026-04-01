@@ -12,6 +12,7 @@ from timm.models.layers import drop_path
 
 from src.models.utils.triton_kernels import (
     can_use_triton_rope_rotate,
+    triton_rotate_query_key_pair,
     triton_rotate_queries_or_keys,
 )
 
@@ -102,6 +103,18 @@ def rotate_queries_or_keys(x, pos):
 
 
 def rotate_query_key_pair(q, k, pos):
+    if can_use_triton_rope_rotate(q, pos) and can_use_triton_rope_rotate(k, pos) and not (
+        torch.is_grad_enabled() and (q.requires_grad or k.requires_grad)
+    ):
+        key = (q.device.type, q.device.index, q.dtype, q.size(-1))
+        omega = _INV_FREQ_CACHE.get(key)
+        if omega is None:
+            omega = torch.arange(q.size(-1) // 2, dtype=q.dtype, device=q.device)
+            omega /= q.size(-1) / 2.0
+            omega = 1.0 / 10000**omega
+            _INV_FREQ_CACHE[key] = omega
+        return triton_rotate_query_key_pair(q, k, pos, omega)
+
     if pos.ndim > 1 and pos.shape[0] == q.shape[0]:
         pos = torch.cat([pos, pos], dim=0)
     qk = torch.cat([q, k], dim=0)
@@ -660,13 +673,7 @@ class CrossAttention(nn.Module):
 
     def forward(self, q, x):
         B, n, C = q.shape
-        if q.stride(0) == 0:
-            # AttentivePooler expands one learned query tensor across the batch.
-            # Project it once and broadcast the result back over the batch.
-            q = self.q(q[:1]).reshape(1, n, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-            q = q.expand(B, -1, -1, -1)
-        else:
-            q = self.q(q).reshape(B, n, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        q = self.q(q).reshape(B, n, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
         B, N, C = x.shape
         kv = self.kv(x).reshape(B, N, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)

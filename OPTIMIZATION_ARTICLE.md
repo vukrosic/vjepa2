@@ -208,36 +208,39 @@ Why it stayed:
 - parity is straightforward,
 - it is an extra win, not a replacement for the 2D result.
 
-### Precomputed Masked RoPE Positions
+### Rejected: Predictor RoPE Position Precompute
 
 One useful lesson from this pass is that not every worthwhile win needs a custom
 kernel. In the masked RoPE predictor path, the sorted token ids are the same for
 every predictor block in a forward pass, but the old code still decomposed them
 into frame/height/width positions on every block.
 
-The retained fix is simple:
+The first attempt was simple:
 
 - compute the separated RoPE positions once in the predictor,
 - pass them into each RoPE block,
 - keep the attention math identical.
 
-Short working-tree vs `HEAD` check on a 4-block masked RoPE predictor
-(`B=8`, `N_ctxt=64`, `fp16`, CUDA):
+That looked promising initially, but after fixing the surrounding correctness
+issues and benchmarking against the corrected dynamic path, the precompute
+itself lost:
 
-| benchmark | baseline | optimized | speedup |
+| benchmark | dynamic corrected path | precomputed variant | speedup |
 | --- | ---: | ---: | ---: |
-| `predictor_rope_forward` | 13.2590 ms | 12.5633 ms | 1.055x |
+| `predictor_rope_internal` | 13.9165 ms | 14.2865 ms | 0.973x |
 
-That is a modest win, but it is the right kind of modest win:
+So the right decision was:
 
-- real path,
-- real baseline,
-- no functionality change,
-- parity-backed.
+- reject the precompute optimization,
+- keep the correctness fixes around the same path,
+- stop describing this area as a retained throughput win.
 
-This result is for the square masked RoPE predictor case used in the benchmark
-script. Non-square masked predictor parity is now covered in tests, but
-`has_cls=True` remains an upstream edge case that is not generalized here.
+What was retained instead:
+
+- non-square masked RoPE predictor inputs now use the real `H/W` grid instead of
+  silently falling back to square behavior,
+- `has_cls=True` no longer crashes under RoPE,
+- both of those behaviors are now covered by targeted tests.
 
 ### SDPA Correctness Fixes
 
@@ -333,6 +336,162 @@ Why it was still rejected:
 
 So the primitive win was real, but it did not survive a real caller. That means
 it does not belong in the live path.
+
+## Fused `q/k` RoPE Pair Kernel
+
+The next retained win came from the repeated `rotate_query_key_pair` path.
+This helper rotates query and key tensors with the same positions in RoPE
+attention.
+
+The old implementation was correct but indirect:
+
+- concatenate `q` and `k`,
+- rotate the packed tensor,
+- split the result back out.
+
+The retained Triton kernel rotates both tensors together in one pass:
+
+- one position load,
+- one sin/cos evaluation,
+- two outputs written together.
+
+Primitive benchmark on `[8, 16, 4096, 24]`, `fp16`, CUDA:
+
+| kernel | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_query_key_pair` | 1.3617 ms | 0.2182 ms | 6.24x |
+
+That is the kind of local win that is worth keeping.
+
+The caller-level check is the real filter. Under `no_grad`, the kernel is used
+in inference, and the measured results were:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_rope_attention_forward` | 2.0785 ms | 1.9283 ms | 1.08x |
+| `rope_attention_forward` | 1.1694 ms | 1.2025 ms | 0.97x |
+
+So the rule stays the same:
+
+- keep the kernel where the caller improves,
+- reject it where the caller does not.
+
+In this case, the fused pair kernel survives because it helps the action-
+conditioned RoPE path, while the plain RoPE caller path on this benchmark shape
+does not earn a claim by itself.
+
+## Two Useful Rejections
+
+These are worth teaching explicitly because both ideas sounded reasonable, both
+passed parity, and both still failed the real keep/reject filter.
+
+### Contiguous Patch-Embed Output
+
+The patch-embed modules return `flatten(...).transpose(1, 2)`, which is a
+non-contiguous token layout. The obvious experiment is to pay that copy once and
+return a contiguous `[B, N, C]` tensor into the encoder stack.
+
+That hypothesis only half-worked.
+
+Short encoder checks on CUDA, `fp16`, `depth=4`:
+
+| benchmark | baseline | contiguous variant | speedup |
+| --- | ---: | ---: | ---: |
+| image unmasked | 3.8271 ms | 3.7288 ms | 1.03x |
+| image masked | 3.7480 ms | 3.7693 ms | 0.99x |
+| video unmasked | 3.8688 ms | 3.5719 ms | 1.08x |
+| video masked | 3.6584 ms | 3.7410 ms | 0.98x |
+
+So the lesson is not "non-contiguous is always bad." The lesson is:
+
+- the copy can help later blocks,
+- the copy can also hurt the masked training path,
+- if the main path loses, the optimization is rejected.
+
+### Direct Predictor Mask-Token Expansion
+
+Another plausible idea was to skip the full `[B, num_patches, D]` expansion for
+mask tokens in the predictor and expand directly to the masked target shape.
+
+That variant was correct after switching the positional add to an out-of-place
+form, but it still lost:
+
+| benchmark | baseline | direct-expand variant | speedup |
+| --- | ---: | ---: | ---: |
+| predictor mask-token path | 6.6483 ms | 6.7706 ms | 0.98x |
+
+So this one joins the rejected set as well.
+
+## Porting A Win Across Trees
+
+One of the most productive later passes was not a brand-new kernel. It was
+finding code drift between `src` and `app/vjepa_2_1`.
+
+The app-side predictor still had the older pattern:
+
+- explicit `repeat(...)`,
+- Python row-wise permutation with `torch.stack([...])`,
+- extra copies where `torch.gather(...)` could apply the same permutation.
+
+That is exactly the kind of cleanup that is easy to underestimate because it
+does not look exotic. But it is often the highest-confidence work left after the
+first obvious wins land.
+
+The ported cleanup did four things:
+
+- replaced safe `repeat(...)` calls with `expand(...)`,
+- replaced the repeated context copy with `unsqueeze + expand + reshape`,
+- replaced row-wise Python permutation with `torch.gather(...)`,
+- broadcast modality embeddings instead of materializing repeated copies.
+
+That kept the math identical and moved the app-side predictor forward path from:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `app_predictor_forward` | 23.3783 ms | 21.8536 ms | 1.07x |
+
+The important lesson is that "new optimization work" does not always mean "new
+idea." Sometimes the best next win is applying a proven idea consistently across
+the parts of the codebase that still lag behind.
+
+## App-Side RoPE Drift Cleanup
+
+The same pattern showed up again in the app RoPE stack.
+
+The older app tree was still:
+
+- recomputing separated depth/height/width positions in the no-mask path,
+- rotating `q` and `k` independently for each RoPE axis,
+- missing the pair-oriented cleanup that had already proved itself elsewhere.
+
+The retained fix stayed conservative:
+
+- cache separated positions,
+- add a pair-oriented `rotate_query_key_pair(...)`,
+- route app `RoPEAttention` and `Block` through that pair helper.
+
+This was not a new autograd trick. It was just removing duplicated tensor work.
+
+Measured against `HEAD` on CUDA:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_query_key_pair` | 0.9752 ms | 0.5928 ms | 1.65x |
+| `rope_attention_forward` | 4.5426 ms | 2.4995 ms | 1.82x |
+| `rope_block_forward` | 5.0050 ms | 2.8540 ms | 1.75x |
+
+And at the app predictor level, the cumulative effect now shows up too:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `app_predictor_forward` | 16.3713 ms | 14.7981 ms | 1.11x |
+
+This is exactly the kind of optimization work that compounds well:
+
+- it is local,
+- parity is easy to lock down,
+- the caller-level win is large enough to matter,
+- and it improves a real model path rather than a synthetic primitive only.
 
 ## A Good Optimization vs A Bad One
 

@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models.attentive_pooler import AttentivePooler
-from src.models.utils.modules import ACRoPEAttention, CrossAttention, RoPEAttention
+from src.models.utils.modules import ACRoPEAttention, RoPEAttention
 
 
 def load_module_from_head(repo_root, git_path, module_name):
@@ -121,23 +121,5 @@ def test_attentive_pooler_matches_head_baseline_cpu():
     with torch.no_grad():
         optimized_out = optimized(x)
         reference_out = reference(x)
-
-    torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)
-
-
-def test_cross_attention_broadcast_query_matches_head_baseline_cpu():
-    baseline = load_module_from_head(ROOT, "src/models/utils/modules.py", "baseline_src_modules_test_cross")
-
-    kwargs = dict(dim=384, num_heads=6, qkv_bias=True)
-    optimized = CrossAttention(**kwargs).eval()
-    reference = baseline.CrossAttention(**kwargs).eval()
-    reference.load_state_dict(optimized.state_dict())
-
-    q = torch.randn(1, 4, 384).expand(8, -1, -1)
-    x = torch.randn(8, 256, 384)
-
-    with torch.no_grad():
-        optimized_out = optimized(q, x)
-        reference_out = reference(q, x)
 
     torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)

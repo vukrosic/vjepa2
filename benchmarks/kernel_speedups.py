@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models.utils.modules import ACRoPEAttention, RoPEAttention, rotate_queries_or_keys
+from src.models.utils.modules import rotate_query_key_pair
 from src.masks.utils import apply_masks
 
 
@@ -57,6 +58,43 @@ def benchmark_apply_masks_1d():
 
     torch.testing.assert_close(optimized(), baseline())
     return bench("apply_masks_multi_1d", baseline, optimized, warmup=10, iters=50)
+
+
+def benchmark_rotate_query_key_pair():
+    q = torch.randn(8, 16, 4096, 24, device="cuda", dtype=torch.float16)
+    k = torch.randn(8, 16, 4096, 24, device="cuda", dtype=torch.float16)
+    pos = torch.arange(4096, device="cuda").view(1, 1, 4096)
+
+    def baseline():
+        return baseline_rotate_queries_or_keys(q, pos), baseline_rotate_queries_or_keys(k, pos)
+
+    def optimized():
+        return rotate_query_key_pair(q, k, pos)
+
+    baseline_q, baseline_k = baseline()
+    optimized_q, optimized_k = optimized()
+    torch.testing.assert_close(optimized_q, baseline_q, atol=5e-3, rtol=5e-3)
+    torch.testing.assert_close(optimized_k, baseline_k, atol=5e-3, rtol=5e-3)
+
+    def timed(fn, warmup=10, iters=50):
+        for _ in range(warmup):
+            fn()
+        torch.cuda.synchronize()
+        start = time.perf_counter()
+        for _ in range(iters):
+            fn()
+        torch.cuda.synchronize()
+        return (time.perf_counter() - start) * 1000.0 / iters
+
+    baseline_ms = timed(baseline)
+    optimized_ms = timed(optimized)
+    return {
+        "name": "rotate_query_key_pair",
+        "baseline_ms": baseline_ms,
+        "optimized_ms": optimized_ms,
+        "speedup_pct": ((baseline_ms - optimized_ms) / baseline_ms) * 100.0,
+        "max_abs_diff": max((optimized_q - baseline_q).abs().max().item(), (optimized_k - baseline_k).abs().max().item()),
+    }
 
 
 def baseline_rope_attention(module, x, mask=None, T=None, H_patches=None, W_patches=None):
@@ -231,6 +269,7 @@ def main():
             lambda: rotate_queries_or_keys(rotate_x, rotate_pos),
         )
     )
+    results.append(benchmark_rotate_query_key_pair())
 
     rope = RoPEAttention(dim=1024, num_heads=16, use_sdpa=False, proj_drop=0.0, attn_drop=0.0, grid_size=16).cuda().eval()
     rope_x = torch.randn(2, 16 * 16 * 8, 1024, device="cuda")

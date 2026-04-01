@@ -28,12 +28,12 @@ def apply_masks(x, masks, concat=True):
     if same_shape_1d:
         stacked_masks = torch.stack(masks, dim=0)
         gathered = torch.gather(
-            x[:1].unsqueeze(0).expand(len(masks), -1, -1, -1),
-            dim=2,
-            index=stacked_masks.unsqueeze(1).unsqueeze(-1).expand(-1, 1, -1, x.size(-1)),
+            x[:1].expand(len(masks), -1, -1),
+            dim=1,
+            index=stacked_masks.unsqueeze(-1).expand(-1, -1, x.size(-1)),
         )
         if not concat:
-            return list(gathered.unbind(0))
+            return [g.unsqueeze(0) for g in gathered.unbind(0)]
         return gathered.reshape(-1, stacked_masks.size(-1), x.size(-1))
 
     same_shape_2d = masks[0].ndim == 2 and all(m.ndim == 2 and m.shape == masks[0].shape for m in masks)

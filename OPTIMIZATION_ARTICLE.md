@@ -644,6 +644,38 @@ The lesson is straightforward:
 3. Do not keep a cleanup unless it survives the main path and the common
    variants.
 
+## Prototype Kernels That Failed Fast
+
+Late in the process, a few manual-kernel prototypes were worth checking because
+they looked structurally promising:
+
+- a separable-RoPE Triton kernel that tries to fuse the `d/h/w` rotations into
+  one pass,
+- grouped-query attention and sparse-attention kernels that target more exotic
+  attention shapes,
+- temporal aggregation kernels that are not part of the current V-JEPA 2 hot
+  path.
+
+This is where a disciplined workflow matters.
+
+The separable-RoPE prototype failed the first real test:
+
+- it needed fixes just to compile on the target card,
+- and once it ran, it still failed parity against the existing reference path.
+
+So it was rejected immediately.
+
+The GQA and sparse-attention kernels were different: they were not even on the
+main V-JEPA 2 execution path, so they did not earn benchmark time in the first
+place.
+
+That is another useful optimization rule:
+
+1. A kernel that is not on the live hot path is not a win yet.
+2. A kernel that fails parity is not a win ever.
+3. Prototype code should either graduate into a measured path or leave the
+   active tree.
+
 ## Commands
 
 Representative retained validation:

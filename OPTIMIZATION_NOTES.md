@@ -1822,3 +1822,47 @@ A larger one-off benchmark was also negative:
 - reject,
 - keep `src/models/ac_predictor.py` at `HEAD`,
 - do not promote AC predictor glue changes unless they survive repeated caller-level benchmarking on the main path.
+
+## Step 25: Prototype Kernels That Did Not Graduate
+
+I also checked the remaining manual-kernel prototypes that had accumulated in
+the tree.
+
+### Separable RoPE Prototype
+
+The prototype in
+[`src/models/utils/fused_qkv_rope_kernel.py`](/workspace/vjepa2/src/models/utils/fused_qkv_rope_kernel.py)
+tried to fuse the three `d/h/w` RoPE slices into one Triton pass.
+
+That is the right direction conceptually, but the current prototype did not
+survive the first real gate:
+
+- it needed immediate compile fixes just to run on the 3090,
+- and after that it still failed parity badly against the existing slice-wise
+  reference path.
+
+Decision:
+
+- reject the current prototype,
+- keep the idea in the notebook,
+- do not promote any fused separable-RoPE kernel until it matches the existing
+  `d/h/w` split path exactly.
+
+### GQA / Sparse Attention Prototypes
+
+The stray files
+
+- [`src/models/utils/gqa_kernel.py`](/workspace/vjepa2/src/models/utils/gqa_kernel.py)
+- [`src/models/utils/sparse_attention_kernel.py`](/workspace/vjepa2/src/models/utils/sparse_attention_kernel.py)
+- [`src/models/utils/temporal_aggregation_kernel.py`](/workspace/vjepa2/src/models/utils/temporal_aggregation_kernel.py)
+
+are not wired into the live V-JEPA 2 attention path.
+
+So even before benchmarking, they fail the main-path filter for this pass.
+
+Decision:
+
+- treat them as off-path prototypes,
+- do not count them as optimizations for the current model,
+- remove them from the active working set unless and until the architecture
+  actually needs them.

@@ -66,6 +66,24 @@ def test_app_rotate_query_key_pair_matches_head_baseline_cuda():
     assert torch.equal(optimized_k, baseline_k)
 
 
+def test_app_rotate_query_key_pair_matches_head_baseline_cuda_batched_pos():
+    if not torch.cuda.is_available():
+        return
+
+    baseline = load_module_from_head(ROOT, "app/vjepa_2_1/models/utils/modules.py", "baseline_app_rope_pair_batched_pos")
+
+    q = torch.randn(2, 3, 8, 12, device="cuda", dtype=torch.float16)
+    k = torch.randn(2, 3, 8, 12, device="cuda", dtype=torch.float16)
+    pos = torch.arange(5, device="cuda", dtype=torch.float16).view(1, 1, 5).expand(2, -1, -1)
+
+    baseline_q = baseline.rotate_queries_or_keys(q, pos, n_registers=2, has_cls_first=True)
+    baseline_k = baseline.rotate_queries_or_keys(k, pos, n_registers=2, has_cls_first=True)
+    optimized_q, optimized_k = rotate_query_key_pair(q, k, pos, n_registers=2, has_cls_first=True)
+
+    assert torch.equal(optimized_q, baseline_q)
+    assert torch.equal(optimized_k, baseline_k)
+
+
 def test_app_rope_attention_matches_head_baseline_cuda():
     if not torch.cuda.is_available():
         return

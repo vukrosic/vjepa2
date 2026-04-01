@@ -45,7 +45,7 @@ def main():
 
     baseline = load_module_from_head(ROOT, "app/vjepa_2_1/models/predictor.py", "baseline_app_predictor_bench")
     kwargs = dict(
-        img_size=128,
+        img_size=256,
         patch_size=16,
         num_frames=1,
         embed_dim=256,
@@ -67,8 +67,13 @@ def main():
 
     B, N_ctxt = 8, 64
     x = torch.randn(B, N_ctxt, kwargs["embed_dim"], device="cuda", dtype=torch.float16)
-    masks_x = [torch.randint(0, 64, (B, N_ctxt), device="cuda", dtype=torch.long)]
-    masks_y = [torch.randint(0, 64, (B, N_ctxt), device="cuda", dtype=torch.long)]
+    num_patches = (kwargs["img_size"] // kwargs["patch_size"]) ** 2
+    perms = torch.stack(
+        [torch.randperm(num_patches, device="cuda", dtype=torch.long) for _ in range(B)],
+        dim=0,
+    )
+    masks_x = [torch.sort(perms[:, :N_ctxt], dim=1).values]
+    masks_y = [torch.sort(perms[:, N_ctxt : 2 * N_ctxt], dim=1).values]
 
     def baseline_fn():
         return reference(x, masks_x, masks_y)[0]

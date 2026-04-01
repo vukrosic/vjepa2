@@ -260,7 +260,7 @@ Why they matter:
 
 This section matters as much as the retained wins.
 
-### Rejected: Triton RoPE Autograd Path
+### Rejected: First Triton RoPE Autograd Attempt
 
 The first version of the Triton path tried to support backward by applying the
 same rotate with `-pos`.
@@ -273,10 +273,10 @@ Why it was rejected:
 
 Decision:
 
-- no live Triton autograd path,
-- any narrower forward-only Triton path must still earn its place with an
-  independent reference check,
-- training stays on the PyTorch reference path.
+- reject that first backward attempt,
+- keep any narrower forward-only Triton path only if it survives its own
+  reference checks,
+- come back with a cleaner autograd implementation later.
 
 ### Rejected: Fused Multi-Axis Q/K Triton Kernel
 
@@ -458,40 +458,35 @@ the parts of the codebase that still lag behind.
 
 The same pattern showed up again in the app RoPE stack.
 
-The older app tree was still:
+The app predictor still had one hot reorder step that was doing more work than
+necessary. The mask pipeline already produces sorted indices, but the forward
+path was still reconstructing the full inverse permutation before slicing out
+the target tokens.
 
-- recomputing separated depth/height/width positions in the no-mask path,
-- rotating `q` and `k` independently for each RoPE axis,
-- missing the pair-oriented cleanup that had already proved itself elsewhere.
+The experiment was narrower:
 
-The retained fix stayed conservative:
+- compute target positions directly with `torch.searchsorted(...)`,
+- gather only the target slice on the `return_all_tokens=False` path,
+- keep the inverse-permutation fallback for the full-token path.
 
-- cache separated positions,
-- add a pair-oriented `rotate_query_key_pair(...)`,
-- route app `RoPEAttention` and `Block` through that pair helper.
+That only works because the masks are sorted in the real pipeline. The parity
+test and benchmark both use sorted masks to match that contract.
 
-This was not a new autograd trick. It was just removing duplicated tensor work.
-
-Measured against `HEAD` on CUDA:
-
-| benchmark | baseline | optimized | speedup |
-| --- | ---: | ---: | ---: |
-| `rotate_query_key_pair` | 0.9752 ms | 0.5928 ms | 1.65x |
-| `rope_attention_forward` | 4.5426 ms | 2.4995 ms | 1.82x |
-| `rope_block_forward` | 5.0050 ms | 2.8540 ms | 1.75x |
-
-And at the app predictor level, the cumulative effect now shows up too:
+One-off benchmark against `HEAD` on CUDA:
 
 | benchmark | baseline | optimized | speedup |
 | --- | ---: | ---: | ---: |
-| `app_predictor_forward` | 16.3713 ms | 14.7981 ms | 1.11x |
+| `app_predictor_forward` | 14.6492 ms | 14.2557 ms | 1.03x |
+
+Repeated CUDA measurements later averaged about `-0.45%` over 4 runs, with 3 of
+4 runs slower, so this path was rejected rather than retained.
 
 This is exactly the kind of optimization work that compounds well:
 
 - it is local,
 - parity is easy to lock down,
-- the caller-level win is large enough to matter,
-- and it improves a real model path rather than a synthetic primitive only.
+- the caller-level win was not reliable enough to keep,
+- and it is better to document the dead end than pretend it was a win.
 
 ## A Good Optimization vs A Bad One
 
@@ -536,6 +531,122 @@ The best remaining candidates are:
 3. Larger model-level forward/backward measurements on real training shapes to
    confirm which block-level wins matter.
 
+## Manual Triton RoPE
+
+The best manual-kernel lesson in this repo is that correctness is only the
+first gate. After the Triton RoPE path was already working, a simple launch
+tuning pass found more headroom on the RTX 3090 without changing the math.
+
+The practical change was small:
+
+- `rotate_queries_or_keys` runs with `num_warps=2`,
+- `rotate_query_key_pair` keeps the same kernel math but uses
+  `block_d=128, num_warps=2`.
+
+Measured against `HEAD`-equivalent launch parameters, the tuned kernels are
+faster on the same shape:
+
+| benchmark | old launch config | tuned config | improvement |
+| --- | ---: | ---: | ---: |
+| `rotate_queries_or_keys` | 0.9450 ms | 0.4668 ms | 50.57% |
+| `rotate_query_key_pair` | 1.9178 ms | 1.3901 ms | 27.53% |
+
+The same tuned path also still beats the plain PyTorch baseline on the main
+kernel benchmark:
+
+| benchmark | baseline | tuned | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_queries_or_keys` | 1.0148 ms | 0.9010 ms | 11.22% |
+| `rotate_query_key_pair` | 1.4236 ms | 0.7710 ms | 45.84% |
+
+The lesson is not "write more Triton code". The lesson is:
+
+1. Prove the math first.
+2. Sweep launch configs before rewriting kernels.
+3. Keep only the configuration that wins both parity and benchmark checks.
+4. Prefer the smallest change that moves the real path.
+
+## Making Triton RoPE Training-Safe
+
+The first live Triton RoPE retain was inference-only. That is not enough for a
+real training path, so the next step was to make the same manual kernel survive
+backward.
+
+That fix is conceptually simple: RoPE is an orthonormal rotation, so the input
+gradient is the same rotation applied with the negated position angle. In
+practice, that means:
+
+- keep the existing Triton forward kernel,
+- wrap it in a custom autograd function,
+- run the inverse rotation in backward through Triton as well,
+- enable the Triton path even when `requires_grad=True`,
+- verify parity on both the primitive and caller-level RoPE attention blocks.
+
+This is the manual-kernel change that really matters because it moves the main
+training path, not just eval-mode microbenchmarks.
+
+Measured against `HEAD` in backward-inclusive caller benchmarks:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rope_attention_train` | 9.3340 ms | 7.5418 ms | 1.24x |
+| `ac_rope_attention_train` | 14.1698 ms | 11.6688 ms | 1.21x |
+
+The primitive backward-inclusive check was larger:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_queries_or_keys_train` | 2.1162 ms | 0.9759 ms | 2.17x |
+
+This is the higher bar for a manual kernel:
+
+- exact backward parity,
+- caller-level win,
+- retained.
+
+## Keep Fixed Masks On Device
+
+Not every worthwhile win is a new kernel. One of the cleaner late passes was in
+the action-conditioned predictor.
+
+In [`src/models/ac_predictor.py`](/workspace/vjepa2/src/models/ac_predictor.py),
+the frame-causal attention mask is fixed once the model is built. But the
+forward path was still doing this every call:
+
+- slice the cached mask,
+- copy that slice onto the active device,
+- then feed it into attention.
+
+That is wasted work. A fixed mask should live with the module.
+
+The retained fix was simple:
+
+- register the causal mask as a buffer,
+- let `.cuda()` / `.to(...)` move it with the module,
+- slice it directly in `forward(...)`,
+- remove the repeated device copy.
+
+That is not glamorous, but it is exactly the sort of cleanup that compounds on
+real model paths.
+
+Measured against `HEAD` on the 3090:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_predictor_forward` | 13.3319 ms | 13.0986 ms | 1.02x |
+
+Repeated CUDA runs on the same shape averaged:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_predictor_forward` mean | 13.3482 ms | 13.1170 ms | 1.02x |
+
+The lesson is straightforward:
+
+1. If a tensor is fixed module state, register it as module state.
+2. Remove repeated host/device transfers before you reach for a custom kernel.
+3. Keep small wins only when they survive repeat measurement.
+
 ## Commands
 
 Representative retained validation:
@@ -543,11 +654,14 @@ Representative retained validation:
 ```bash
 cd /workspace/vjepa2
 pytest -q \
+  tests/test_ac_predictor_parity.py \
+  tests/models/test_triton_rope_kernel.py \
   tests/models/test_attention_correctness.py \
-  tests/test_predictor_parity.py \
   tests/test_kernel_parity.py \
   tests/models/test_ac_rope_attention.py \
-  tests/test_model_block_parity.py
+  tests/test_model_block_parity.py \
+  tests/test_app_predictor_parity.py \
+  tests/test_app_predictor_output_reorder.py
 ```
 
 ## Final Rule

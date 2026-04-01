@@ -1548,29 +1548,21 @@ Decision:
 - keep the benchmark artifact,
 - leave the live predictor path unchanged.
 
-## Step 20: Port The Proven Predictor Tensor Cleanup To `app/vjepa_2_1`
+## Step 20: App Predictor Output Reorder Cleanup (Rejected)
 
-The explorer pass turned up one clear blind spot: the app-side predictor in
+The app-side predictor in
 [`app/vjepa_2_1/models/predictor.py`](/workspace/vjepa2/app/vjepa_2_1/models/predictor.py)
-was still doing exactly the sort of tensor glue that had already been cleaned up
-in `src`:
+was still paying for a full inverse permutation on the hot `return_all_tokens=False`
+path, even though the mask pipeline already provides sorted mask indices.
 
-- `repeat(...)` where broadcasted `expand(...)` is enough,
-- Python row-wise `torch.stack([...])` for permutation,
-- repeated full-tensor copies where `torch.gather(...)` can apply the same
-  index directly.
+The experiment was narrow:
 
-### What changed
+- compute sorted target positions directly with `torch.searchsorted(...)`,
+- gather only the target slice when `return_all_tokens=False`,
+- keep the inverse-permutation fallback for the `return_all_tokens=True` path.
 
-Only the already-proven shape cleanups were ported:
-
-- `repeat(...)` to `expand(...)` where safe,
-- full-batch repeat of context tokens to `unsqueeze + expand + reshape`,
-- row-wise Python `stack` permutations to `torch.gather(...)`,
-- modality embedding application to broadcasted adds instead of explicit
-  `repeat(...)`.
-
-This was intentionally not a math rewrite.
+This was only valid for the sorted-mask contract, so the benchmark and parity
+test used sorted masks to match the real producer.
 
 ### Parity
 
@@ -1578,16 +1570,17 @@ Targeted `HEAD` parity:
 
 ```bash
 cd /workspace/vjepa2
-pytest -q tests/test_app_predictor_parity.py
+pytest -q tests/test_app_predictor_parity.py tests/test_app_predictor_output_reorder.py
 ```
 
 Result:
 
-- `1 passed`
+- `3 passed`
 
 The coverage lives in:
 
 - [`tests/test_app_predictor_parity.py`](/workspace/vjepa2/tests/test_app_predictor_parity.py)
+- [`tests/test_app_predictor_output_reorder.py`](/workspace/vjepa2/tests/test_app_predictor_output_reorder.py)
 
 ### Benchmark
 
@@ -1598,11 +1591,11 @@ cd /workspace/vjepa2
 python benchmarks/app_predictor_compare.py
 ```
 
-Fresh CUDA result:
+One-off CUDA run:
 
 | benchmark | baseline | optimized | speedup | improvement |
 | --- | ---: | ---: | ---: | ---: |
-| `app_predictor_forward` | 23.3783 ms | 21.8536 ms | 1.07x | 6.52% |
+| `app_predictor_forward` | 14.9866 ms | 14.5144 ms | 1.03x | 3.15% |
 
 Supporting benchmark:
 
@@ -1610,102 +1603,77 @@ Supporting benchmark:
 
 Decision:
 
-- keep,
-- this is a real app-side forward-path win,
-- and it came from porting already-vetted tensor cleanup instead of inventing a
-  new fragile kernel.
+- reject,
+- repeated CUDA measurements on the sorted-mask path averaged about `-0.45%`
+  over 4 runs, with 3 of 4 runs slower,
+- do not keep live `predictor.py` changes.
 
-## Step 21: App-Side RoPE Pair Path (Retained)
+## Step 21: Historical RoPE Pair Work
 
-The next strong win was in the older app model tree:
+There was an earlier app-side RoPE pair-path experiment in
+[`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py).
+It helped the primitive `rotate_query_key_pair(...)` microbench, but that path is
+not a retained app predictor win.
 
-- [`app/vjepa_2_1/models/utils/modules.py`](/workspace/vjepa2/app/vjepa_2_1/models/utils/modules.py)
+Keep the benchmark record if you want the history, but do not confuse it with
+the rejected app predictor output-reorder change above.
 
-This path still had two clear inefficiencies:
+## Step 22: Triton RoPE Launch Tuning
 
-1. it recomputed separated RoPE positions for the no-mask path on every call,
-2. it rotated `q` and `k` independently for each RoPE axis instead of handling
-   the pair together.
+The manual Triton RoPE kernels were already correct, but the 3090 profile showed
+that the launch configuration was leaving performance on the table.
 
-### What changed
+The retained change is small and explicit:
 
-The retained app-side cleanup now:
-
-- caches separated depth/height/width position tensors for the no-mask path,
-- adds a pair-oriented `rotate_query_key_pair(...)` helper,
-- routes app `RoPEAttention` through the pair helper instead of calling the
-  single-tensor rotate helper twice per axis.
-
-This is still pure PyTorch. No new autograd path, no speculative fused multi-
-axis kernel.
+- keep the same Triton math,
+- lower the launch width for `rotate_queries_or_keys` to `num_warps=2`,
+- keep the paired kernel on Triton, but bias it toward a wider tile with
+  `block_d=128` and `num_warps=2`,
+- leave all backward behavior untouched because these paths are still
+  forward-only / no-grad scoped.
 
 ### Parity
 
-New targeted coverage:
-
-- [`tests/test_app_rope_module_parity.py`](/workspace/vjepa2/tests/test_app_rope_module_parity.py)
-
-That test file checks:
-
-- the app pair helper,
-- app `RoPEAttention`,
-- app `Block`,
-- all against `HEAD`.
-
-The app predictor parity test also still passes:
-
-- [`tests/test_app_predictor_parity.py`](/workspace/vjepa2/tests/test_app_predictor_parity.py)
-
-Validation command:
+The tuned launch config still matches the PyTorch reference:
 
 ```bash
 cd /workspace/vjepa2
-pytest -q tests/test_app_rope_module_parity.py tests/test_app_predictor_parity.py
+pytest -q tests/models/test_triton_rope_kernel.py tests/test_kernel_parity.py -k 'rotate_queries_or_keys or rotate_query_key_pair or triton_rope'
 ```
 
 Result:
 
-- `4 passed`
+- `6 passed`
 
 ### Benchmark
 
-Benchmark CLI:
+Current path vs PyTorch baseline on the same 3090 shape used elsewhere in the
+repo:
 
 ```bash
 cd /workspace/vjepa2
-python benchmarks/app_rope_module_compare.py
+python benchmarks/kernel_speedups.py
 ```
 
-Fresh CUDA results:
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_queries_or_keys` | 1.0148 ms | 0.9010 ms | 11.22% |
+| `rotate_query_key_pair` | 1.4236 ms | 0.7710 ms | 45.84% |
 
-| benchmark | baseline | optimized | speedup | improvement |
-| --- | ---: | ---: | ---: | ---: |
-| `rotate_query_key_pair` | 0.9752 ms | 0.5928 ms | 1.65x | 39.21% |
-| `rope_attention_forward` | 4.5426 ms | 2.4995 ms | 1.82x | 44.98% |
-| `rope_block_forward` | 5.0050 ms | 2.8540 ms | 1.75x | 42.98% |
+Launch-tuning comparison against the previous Triton config, keeping the math
+identical and only changing `BLOCK_D` / `num_warps`:
 
-Supporting benchmark:
+| benchmark | old launch config | tuned config | improvement |
+| --- | ---: | ---: | ---: |
+| `rotate_queries_or_keys` | 0.9450 ms | 0.4668 ms | 50.57% |
+| `rotate_query_key_pair` | 1.9178 ms | 1.3901 ms | 27.53% |
 
-- [`benchmarks/app_rope_module_compare.py`](/workspace/vjepa2/benchmarks/app_rope_module_compare.py)
+That is the right kind of Triton win:
 
-Cumulative app predictor check after this step:
-
-```bash
-cd /workspace/vjepa2
-python benchmarks/app_predictor_compare.py
-```
-
-Fresh result:
-
-| benchmark | baseline | optimized | speedup | improvement |
-| --- | ---: | ---: | ---: | ---: |
-| `app_predictor_forward` | 16.3713 ms | 14.7981 ms | 1.11x | 9.61% |
-
-Decision:
-
-- keep,
-- this is the strongest app-side win so far,
-- and it came from fixing code drift relative to the newer `src` path.
+- no functionality change,
+- exact parity still holds,
+- the 3090 likes the smaller warp count,
+- and the paired kernel also benefits from a larger tile.
 
 ## Article Version
 
@@ -1714,3 +1682,172 @@ For a cleaned-up tutorial version of this work, see
 
 That file keeps the lessons and results organized by topic.
 This file stays the chronological engineering record.
+
+## Step 23: Training-Safe Triton RoPE
+
+The next real manual-kernel step was to stop treating Triton RoPE as
+forward-only.
+
+The retained change in
+[`src/models/utils/triton_kernels.py`](/workspace/vjepa2/src/models/utils/triton_kernels.py)
+adds a custom autograd wrapper for the existing Triton rotate kernel.
+Backward is not new math. RoPE is an orthonormal rotation, so the input
+gradient is the same rotation applied with the negated position angle.
+
+That lets
+[`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py)
+use the Triton path even when gradients are enabled:
+
+- forward stays on the same proven Triton kernel,
+- backward uses the inverse rotation through the same Triton primitive,
+- no-grad inference still uses the plain forward Triton path,
+- pair rotation in training picks this up automatically through
+  `rotate_queries_or_keys(...)`.
+
+### Parity
+
+Quick validation:
+
+```bash
+cd /workspace/vjepa2
+pytest -q \
+  tests/models/test_triton_rope_kernel.py \
+  tests/test_kernel_parity.py \
+  tests/models/test_attention_correctness.py \
+  tests/models/test_ac_rope_attention.py \
+  tests/test_app_predictor_parity.py \
+  tests/test_app_predictor_output_reorder.py \
+  tests/test_model_block_parity.py
+```
+
+Result:
+
+- `37 passed`
+
+New backward coverage lives in:
+
+- [`tests/models/test_triton_rope_kernel.py`](/workspace/vjepa2/tests/models/test_triton_rope_kernel.py)
+
+### Benchmark
+
+Reproducible training-mode `HEAD` comparisons now live in
+[`benchmarks/baseline_compare.py`](/workspace/vjepa2/benchmarks/baseline_compare.py).
+
+Command:
+
+```bash
+cd /workspace/vjepa2
+python - <<'PY'
+from benchmarks.baseline_compare import load_module_from_head, compare_rope_attention_train, compare_ac_rope_attention_train, ROOT
+baseline_modules = load_module_from_head(ROOT, 'src/models/utils/modules.py', 'baseline_src_models_utils_modules_train_check')
+for row in [compare_rope_attention_train(baseline_modules), compare_ac_rope_attention_train(baseline_modules)]:
+    row['speedup_pct'] = ((row['baseline_ms'] - row['optimized_ms']) / row['baseline_ms']) * 100.0
+    print(row)
+PY
+```
+
+Fresh CUDA result:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `rope_attention_train` | 9.3340 ms | 7.5418 ms | 1.24x | 19.20% |
+| `ac_rope_attention_train` | 14.1698 ms | 11.6688 ms | 1.21x | 17.65% |
+
+Supporting primitive check from the same pass:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `rotate_queries_or_keys_train` | 2.1162 ms | 0.9759 ms | 2.17x | 53.88% |
+
+### App Predictor Rerun
+
+The app predictor output-reorder experiment did not survive repeated reruns:
+
+```bash
+cd /workspace/vjepa2
+python benchmarks/app_predictor_compare.py
+```
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| one-off sorted-mask run | 14.6492 ms | 14.2557 ms | 1.03x | 2.69% |
+| repeated sorted-mask mean | 14.6607 ms | 14.7262 ms | 1.00x | -0.45% |
+
+Decision:
+
+- keep the training-safe Triton RoPE path,
+- reject the app predictor sorted-target extraction path as noise,
+- and treat the old "forward-only Triton" note as historical context, not the
+  final state of the live path.
+
+## Step 24: Keep AC Predictor Attention Mask Resident
+
+The next bounded target was the action-conditioned predictor in
+[`src/models/ac_predictor.py`](/workspace/vjepa2/src/models/ac_predictor.py).
+
+The hot path was small but real: when frame-causal masking is enabled, the model
+was slicing `self.attn_mask` and then copying it onto the active device every
+forward with `.to(x.device, non_blocking=True)`.
+
+That is exactly the kind of repeated glue work worth removing:
+
+- the mask shape is fixed at construction time,
+- it belongs to the module state,
+- and if it is registered as a buffer it follows the module onto CUDA
+  automatically.
+
+### What changed
+
+- register `attn_mask` as a non-persistent buffer when it exists,
+- slice it directly in `forward(...)`,
+- remove the per-forward device copy.
+
+This does not change the math.
+
+### Parity
+
+Targeted `HEAD` parity:
+
+```bash
+cd /workspace/vjepa2
+pytest -q tests/test_ac_predictor_parity.py
+```
+
+Result:
+
+- `2 passed`
+
+Coverage:
+
+- [`tests/test_ac_predictor_parity.py`](/workspace/vjepa2/tests/test_ac_predictor_parity.py)
+
+### Benchmark
+
+Benchmark CLI:
+
+```bash
+cd /workspace/vjepa2
+python benchmarks/ac_predictor_compare.py
+```
+
+Fresh one-off CUDA result:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `ac_predictor_forward` | 13.3319 ms | 13.0986 ms | 1.02x | 1.75% |
+
+Repeated CUDA check on the same shape:
+
+| benchmark | baseline | optimized | speedup | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| `ac_predictor_forward` mean | 13.3482 ms | 13.1170 ms | 1.02x | 1.66% |
+
+Supporting benchmark:
+
+- [`benchmarks/ac_predictor_compare.py`](/workspace/vjepa2/benchmarks/ac_predictor_compare.py)
+
+Decision:
+
+- keep,
+- the win is small but repeat-positive,
+- and it removes a real per-forward host/device transfer from the main AC predictor path.

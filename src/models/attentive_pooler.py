@@ -95,7 +95,7 @@ class AttentivePooler(nn.Module):
                     x = torch.utils.checkpoint.checkpoint(blk, x, False, None, use_reentrant=False)
                 else:
                     x = blk(x)
-        q = self.query_tokens.expand(len(x), -1, -1)
+        q = self.query_tokens.expand(x.shape[0], -1, -1).contiguous()
         q = self.cross_attention_block(q, x)
         return q
 

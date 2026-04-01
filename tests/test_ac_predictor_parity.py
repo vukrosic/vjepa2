@@ -63,3 +63,125 @@ def test_ac_predictor_matches_head_baseline_cpu():
         reference_out = reference(x, actions, states)
 
     torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)
+
+
+def test_ac_predictor_matches_head_baseline_cuda():
+    if not torch.cuda.is_available():
+        return
+
+    baseline = load_module_from_head(ROOT, "src/models/ac_predictor.py", "baseline_src_ac_predictor_cuda")
+
+    kwargs = dict(
+        img_size=64,
+        patch_size=16,
+        num_frames=4,
+        tubelet_size=1,
+        embed_dim=128,
+        predictor_embed_dim=128,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=2.0,
+        qkv_bias=True,
+        use_rope=True,
+        action_embed_dim=7,
+    )
+    optimized = VisionTransformerPredictorAC(**kwargs).cuda().half().eval()
+    reference = baseline.VisionTransformerPredictorAC(**kwargs).cuda().half().eval()
+    reference.load_state_dict(optimized.state_dict())
+
+    B = 2
+    T = kwargs["num_frames"] // kwargs["tubelet_size"]
+    tokens = T * ((kwargs["img_size"] // kwargs["patch_size"]) ** 2)
+    x = torch.randn(B, tokens, kwargs["embed_dim"], device="cuda", dtype=torch.float16)
+    actions = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda", dtype=torch.float16)
+    states = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda", dtype=torch.float16)
+
+    with torch.no_grad():
+        optimized_out = optimized(x, actions, states)
+        reference_out = reference(x, actions, states)
+
+    torch.testing.assert_close(optimized_out, reference_out, atol=3e-3, rtol=3e-3)
+
+
+def test_ac_predictor_matches_head_baseline_cuda():
+    if not torch.cuda.is_available():
+        return
+
+    baseline = load_module_from_head(ROOT, "src/models/ac_predictor.py", "baseline_src_ac_predictor_cuda")
+
+    kwargs = dict(
+        img_size=64,
+        patch_size=16,
+        num_frames=8,
+        tubelet_size=1,
+        embed_dim=96,
+        predictor_embed_dim=96,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=2.0,
+        qkv_bias=True,
+        use_rope=True,
+        action_embed_dim=7,
+    )
+    optimized = VisionTransformerPredictorAC(**kwargs).cuda().eval()
+    reference = baseline.VisionTransformerPredictorAC(**kwargs).cuda().eval()
+    reference.load_state_dict(optimized.state_dict())
+
+    B = 2
+    T = kwargs["num_frames"] // kwargs["tubelet_size"]
+    tokens = T * ((kwargs["img_size"] // kwargs["patch_size"]) ** 2)
+    x = torch.randn(B, tokens, kwargs["embed_dim"], device="cuda")
+    actions = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
+    states = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
+
+    assert optimized.attn_mask.is_cuda
+    assert reference.attn_mask.device.type == "cpu"
+
+    with torch.no_grad():
+        optimized_out = optimized(x, actions, states)
+        reference_out = reference(x, actions, states)
+
+    torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)
+
+
+def test_ac_predictor_matches_head_baseline_cuda_extrinsics():
+    if not torch.cuda.is_available():
+        return
+
+    baseline = load_module_from_head(ROOT, "src/models/ac_predictor.py", "baseline_src_ac_predictor_cuda_extrinsics")
+
+    kwargs = dict(
+        img_size=64,
+        patch_size=16,
+        num_frames=4,
+        tubelet_size=1,
+        embed_dim=96,
+        predictor_embed_dim=96,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=2.0,
+        qkv_bias=True,
+        use_rope=True,
+        action_embed_dim=7,
+        use_extrinsics=True,
+    )
+    optimized = VisionTransformerPredictorAC(**kwargs).cuda().eval()
+    reference = baseline.VisionTransformerPredictorAC(**kwargs).cuda().eval()
+    reference.load_state_dict(optimized.state_dict())
+
+    B = 2
+    T = kwargs["num_frames"] // kwargs["tubelet_size"]
+    tokens = T * ((kwargs["img_size"] // kwargs["patch_size"]) ** 2)
+    x = torch.randn(B, tokens, kwargs["embed_dim"], device="cuda")
+    actions = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
+    states = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
+    extrinsics = torch.randn(B, T, kwargs["action_embed_dim"] - 1, device="cuda")
+
+    assert optimized.attn_mask.is_cuda
+    assert reference.attn_mask.device.type == "cpu"
+
+    with torch.no_grad():
+        optimized_out = optimized(x, actions, states, extrinsics=extrinsics)
+        reference_out = reference(x, actions, states, extrinsics=extrinsics)
+
+    torch.testing.assert_close(optimized_out, reference_out, atol=1e-5, rtol=1e-5)

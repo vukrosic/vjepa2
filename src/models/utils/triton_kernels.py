@@ -172,12 +172,12 @@ def triton_rotate_queries_or_keys(x, pos, omega, block_d=64):
         D,
         D // 2,
         BLOCK_D=block_d,
-        num_warps=4,
+        num_warps=2,
     )
     return out
 
 
-def triton_rotate_query_key_pair(q, k, pos, omega, block_d=64):
+def triton_rotate_query_key_pair(q, k, pos, omega, block_d=128):
     if pos.ndim != 1:
         pos = pos.reshape(-1)
     if pos.dtype != q.dtype:
@@ -215,10 +215,51 @@ def triton_rotate_query_key_pair(q, k, pos, omega, block_d=64):
         D,
         D // 2,
         BLOCK_D=block_d,
-        num_warps=4,
+        num_warps=2,
     )
     return out_q, out_k
 
 
+def triton_rotate_query_key_pair_autograd(q, k, pos, omega):
+    return _TritonRotateQueryKeyPairAutograd.apply(q, k, pos, omega)
+
+
 def triton_rotate_queries_or_keys_autograd(x, pos, omega):
-    return triton_rotate_queries_or_keys(x, pos, omega)
+    return _TritonRotateQueriesOrKeysAutograd.apply(x, pos, omega)
+
+
+class _TritonRotateQueriesOrKeysAutograd(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, pos, omega):
+        if pos.ndim != 1:
+            pos = pos.reshape(-1)
+        if pos.dtype != x.dtype:
+            pos = pos.to(x.dtype)
+        ctx.save_for_backward(pos, omega)
+        return triton_rotate_queries_or_keys(x, pos, omega)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        pos, omega = ctx.saved_tensors
+        grad_output = grad_output.contiguous()
+        grad_x = triton_rotate_queries_or_keys(grad_output, -pos, omega)
+        return grad_x, None, None
+
+
+class _TritonRotateQueryKeyPairAutograd(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, q, k, pos, omega):
+        if pos.ndim != 1:
+            pos = pos.reshape(-1)
+        if pos.dtype != q.dtype:
+            pos = pos.to(q.dtype)
+        ctx.save_for_backward(pos, omega)
+        return triton_rotate_query_key_pair(q, k, pos, omega)
+
+    @staticmethod
+    def backward(ctx, grad_q, grad_k):
+        pos, omega = ctx.saved_tensors
+        grad_q = grad_q.contiguous()
+        grad_k = grad_k.contiguous()
+        grad_q, grad_k = triton_rotate_query_key_pair(grad_q, grad_k, -pos, omega)
+        return grad_q, grad_k, None, None

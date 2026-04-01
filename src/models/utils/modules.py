@@ -12,8 +12,10 @@ from timm.models.layers import drop_path
 
 from src.models.utils.triton_kernels import (
     can_use_triton_rope_rotate,
+    triton_rotate_query_key_pair_autograd,
     triton_rotate_query_key_pair,
     triton_rotate_queries_or_keys,
+    triton_rotate_queries_or_keys_autograd,
 )
 
 _INV_FREQ_CACHE = {}
@@ -74,7 +76,9 @@ def rotate_queries_or_keys(x, pos):
         omega /= D / 2.0
         omega = 1.0 / 10000**omega  # (D/2,)
         _INV_FREQ_CACHE[key] = omega
-    if can_use_triton_rope_rotate(x, pos) and not (torch.is_grad_enabled() and x.requires_grad):
+    if can_use_triton_rope_rotate(x, pos):
+        if torch.is_grad_enabled() and x.requires_grad:
+            return triton_rotate_queries_or_keys_autograd(x, pos, omega)
         return triton_rotate_queries_or_keys(x, pos, omega)
     freq = pos.unsqueeze(-1) * omega  # (..., N, D/2), outer product
 
@@ -103,9 +107,7 @@ def rotate_queries_or_keys(x, pos):
 
 
 def rotate_query_key_pair(q, k, pos):
-    if can_use_triton_rope_rotate(q, pos) and can_use_triton_rope_rotate(k, pos) and not (
-        torch.is_grad_enabled() and (q.requires_grad or k.requires_grad)
-    ):
+    if can_use_triton_rope_rotate(q, pos) and can_use_triton_rope_rotate(k, pos):
         key = (q.device.type, q.device.index, q.dtype, q.size(-1))
         omega = _INV_FREQ_CACHE.get(key)
         if omega is None:
@@ -113,6 +115,8 @@ def rotate_query_key_pair(q, k, pos):
             omega /= q.size(-1) / 2.0
             omega = 1.0 / 10000**omega
             _INV_FREQ_CACHE[key] = omega
+        if torch.is_grad_enabled() and (q.requires_grad or k.requires_grad):
+            return triton_rotate_query_key_pair_autograd(q, k, pos, omega)
         return triton_rotate_query_key_pair(q, k, pos, omega)
 
     if pos.ndim > 1 and pos.shape[0] == q.shape[0]:

@@ -62,6 +62,22 @@ def benchmark_cuda(fn, warmup, iters):
     return start.elapsed_time(end) / iters
 
 
+def benchmark_cuda_backward(fn, warmup, iters):
+    for _ in range(warmup):
+        x = fn()
+        x.square().mean().backward()
+    torch.cuda.synchronize()
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
+    for _ in range(iters):
+        x = fn()
+        x.square().mean().backward()
+    end.record()
+    torch.cuda.synchronize()
+    return start.elapsed_time(end) / iters
+
+
 def format_rows_markdown(rows):
     header = ["name", "baseline_ms", "optimized_ms", "speedup_pct"]
     lines = [
@@ -201,6 +217,76 @@ def compare_rope_attention(baseline_modules, warmup=20, iters=100):
         "name": "rope_attention_forward",
         "baseline_ms": benchmark_cuda(baseline_fn, warmup, iters),
         "optimized_ms": benchmark_cuda(optimized_fn, warmup, iters),
+    }
+
+
+def compare_rope_attention_train(baseline_modules, warmup=10, iters=30):
+    kwargs = dict(dim=256, num_heads=8, qkv_bias=True, proj_drop=0.0, attn_drop=0.0, use_sdpa=False, grid_size=8)
+    optimized = RoPEAttention(**kwargs).cuda().half().train()
+    baseline = baseline_modules.RoPEAttention(**kwargs).cuda().half().train()
+    baseline.load_state_dict(optimized.state_dict())
+
+    x = torch.randn(2, 4 * 8 * 8, 256, device="cuda", dtype=torch.float16)
+
+    def baseline_fn():
+        baseline.zero_grad(set_to_none=True)
+        return baseline(x.detach().clone().requires_grad_(True), T=4, H_patches=8, W_patches=8)
+
+    def optimized_fn():
+        optimized.zero_grad(set_to_none=True)
+        return optimized(x.detach().clone().requires_grad_(True), T=4, H_patches=8, W_patches=8)
+
+    x_ref = x.detach().clone().requires_grad_(True)
+    y_ref = baseline(x_ref, T=4, H_patches=8, W_patches=8)
+    y_ref.square().mean().backward()
+    grad_ref = x_ref.grad.detach().clone()
+
+    x_opt = x.detach().clone().requires_grad_(True)
+    y_opt = optimized(x_opt, T=4, H_patches=8, W_patches=8)
+    y_opt.square().mean().backward()
+    grad_opt = x_opt.grad.detach().clone()
+
+    torch.testing.assert_close(y_opt, y_ref, atol=6e-3, rtol=6e-3)
+    torch.testing.assert_close(grad_opt, grad_ref, atol=8e-3, rtol=8e-3)
+    return {
+        "name": "rope_attention_train",
+        "baseline_ms": benchmark_cuda_backward(baseline_fn, warmup, iters),
+        "optimized_ms": benchmark_cuda_backward(optimized_fn, warmup, iters),
+    }
+
+
+def compare_ac_rope_attention_train(baseline_modules, warmup=6, iters=20):
+    kwargs = dict(dim=256, num_heads=8, qkv_bias=True, proj_drop=0.0, attn_drop=0.0, use_sdpa=False, grid_size=8)
+    optimized = ACRoPEAttention(**kwargs).cuda().half().train()
+    baseline = baseline_modules.ACRoPEAttention(**kwargs).cuda().half().train()
+    baseline.load_state_dict(optimized.state_dict())
+
+    x = torch.randn(2, 4 * (2 + 8 * 8), 256, device="cuda", dtype=torch.float16)
+
+    def baseline_fn():
+        baseline.zero_grad(set_to_none=True)
+        return baseline(x.detach().clone().requires_grad_(True), T=4, H=8, W=8, action_tokens=2)
+
+    def optimized_fn():
+        optimized.zero_grad(set_to_none=True)
+        return optimized(x.detach().clone().requires_grad_(True), T=4, H=8, W=8, action_tokens=2)
+
+    x_ref = x.detach().clone().requires_grad_(True)
+    y_ref = baseline(x_ref, T=4, H=8, W=8, action_tokens=2)
+    y_ref.square().mean().backward()
+    grad_ref = x_ref.grad.detach().clone()
+
+    x_opt = x.detach().clone().requires_grad_(True)
+    y_opt = optimized(x_opt, T=4, H=8, W=8, action_tokens=2)
+    y_opt.square().mean().backward()
+    grad_opt = x_opt.grad.detach().clone()
+
+    torch.testing.assert_close(y_opt, y_ref, atol=6e-3, rtol=6e-3)
+    torch.testing.assert_close(grad_opt, grad_ref, atol=8e-3, rtol=8e-3)
+    return {
+        "name": "ac_rope_attention_train",
+        "baseline_ms": benchmark_cuda_backward(baseline_fn, warmup, iters),
+        "optimized_ms": benchmark_cuda_backward(optimized_fn, warmup, iters),
     }
 
 
@@ -367,6 +453,8 @@ def main():
         compare_ac_rope_attention(baseline_modules),
         compare_predictor_rope(baseline_predictor),
         compare_rope_attention(baseline_modules),
+        compare_rope_attention_train(baseline_modules),
+        compare_ac_rope_attention_train(baseline_modules),
     ]
 
     for row in rows:

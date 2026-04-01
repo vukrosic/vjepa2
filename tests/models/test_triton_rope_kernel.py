@@ -6,7 +6,7 @@
 import pytest
 import torch
 
-from src.models.utils.modules import _INV_FREQ_CACHE, rotate_queries_or_keys
+from src.models.utils.modules import _INV_FREQ_CACHE, rotate_queries_or_keys, rotate_query_key_pair
 from src.models.utils.triton_kernels import TRITON_AVAILABLE, triton_rotate_queries_or_keys
 
 
@@ -74,3 +74,29 @@ def test_live_rotate_queries_or_keys_matches_pytorch_backward():
     actual_grad = x.grad.detach().clone()
 
     torch.testing.assert_close(actual_grad, reference_grad, atol=3e-3, rtol=3e-3)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not TRITON_AVAILABLE, reason="This test requires CUDA + Triton")
+def test_live_rotate_query_key_pair_matches_pytorch_backward():
+    torch.manual_seed(0)
+    q = torch.randn(2, 4, 128, 32, device="cuda", dtype=torch.float16, requires_grad=True)
+    k = torch.randn(2, 4, 128, 32, device="cuda", dtype=torch.float16, requires_grad=True)
+    pos = torch.arange(128, device="cuda", dtype=torch.float16)
+
+    reference_q = _baseline_rotate_queries_or_keys(q, pos)
+    reference_k = _baseline_rotate_queries_or_keys(k, pos)
+    reference_loss = reference_q.square().mean() + reference_k.square().mean()
+    reference_loss.backward()
+    reference_q_grad = q.grad.detach().clone()
+    reference_k_grad = k.grad.detach().clone()
+
+    q.grad.zero_()
+    k.grad.zero_()
+    actual_q, actual_k = rotate_query_key_pair(q, k, pos)
+    actual_loss = actual_q.square().mean() + actual_k.square().mean()
+    actual_loss.backward()
+    actual_q_grad = q.grad.detach().clone()
+    actual_k_grad = k.grad.detach().clone()
+
+    torch.testing.assert_close(actual_q_grad, reference_q_grad, atol=3e-3, rtol=3e-3)
+    torch.testing.assert_close(actual_k_grad, reference_k_grad, atol=3e-3, rtol=3e-3)

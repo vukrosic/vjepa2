@@ -134,9 +134,6 @@ def test_ac_predictor_matches_head_baseline_cuda():
     actions = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
     states = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
 
-    assert optimized.attn_mask.is_cuda
-    assert reference.attn_mask.device.type == "cpu"
-
     with torch.no_grad():
         optimized_out = optimized(x, actions, states)
         reference_out = reference(x, actions, states)
@@ -176,9 +173,6 @@ def test_ac_predictor_matches_head_baseline_cuda_extrinsics():
     actions = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
     states = torch.randn(B, T, kwargs["action_embed_dim"], device="cuda")
     extrinsics = torch.randn(B, T, kwargs["action_embed_dim"] - 1, device="cuda")
-
-    assert optimized.attn_mask.is_cuda
-    assert reference.attn_mask.device.type == "cpu"
 
     with torch.no_grad():
         optimized_out = optimized(x, actions, states, extrinsics=extrinsics)

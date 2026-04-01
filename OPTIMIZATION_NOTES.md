@@ -1780,74 +1780,45 @@ Decision:
 - and treat the old "forward-only Triton" note as historical context, not the
   final state of the live path.
 
-## Step 24: Keep AC Predictor Attention Mask Resident
+## Step 24: AC Predictor Glue Sweep (Rejected)
 
-The next bounded target was the action-conditioned predictor in
+I also checked the action-conditioned predictor in
 [`src/models/ac_predictor.py`](/workspace/vjepa2/src/models/ac_predictor.py).
+The obvious glue candidates were the causal mask path and the conditioning-token
+pack/unpack path.
 
-The hot path was small but real: when frame-causal masking is enabled, the model
-was slicing `self.attn_mask` and then copying it onto the active device every
-forward with `.to(x.device, non_blocking=True)`.
+I did not keep any change.
 
-That is exactly the kind of repeated glue work worth removing:
+### What I Checked
 
-- the mask shape is fixed at construction time,
-- it belongs to the module state,
-- and if it is registered as a buffer it follows the module onto CUDA
-  automatically.
+- causal-mask handling,
+- conditioning-token packing,
+- conditioning-token unpacking,
+- the existing parity helper in
+  [`tests/test_ac_predictor_parity.py`](/workspace/vjepa2/tests/test_ac_predictor_parity.py).
 
-### What changed
+### Results
 
-- register `attn_mask` as a non-persistent buffer when it exists,
-- slice it directly in `forward(...)`,
-- remove the per-forward device copy.
+The repeated small-shape default path was only marginally positive:
 
-This does not change the math.
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_predictor_forward` | 5.7273 ms | 5.5867 ms | 1.82% |
 
-### Parity
+But the extrinsics branch regressed:
 
-Targeted `HEAD` parity:
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_predictor_forward_extrinsics` | 5.8428 ms | 6.1466 ms | -5.03% |
 
-```bash
-cd /workspace/vjepa2
-pytest -q tests/test_ac_predictor_parity.py
-```
+A larger one-off benchmark was also negative:
 
-Result:
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `ac_predictor_forward` | 10.3075 ms | 10.3602 ms | -0.51% |
 
-- `2 passed`
+### Decision
 
-Coverage:
-
-- [`tests/test_ac_predictor_parity.py`](/workspace/vjepa2/tests/test_ac_predictor_parity.py)
-
-### Benchmark
-
-Benchmark CLI:
-
-```bash
-cd /workspace/vjepa2
-python benchmarks/ac_predictor_compare.py
-```
-
-Fresh one-off CUDA result:
-
-| benchmark | baseline | optimized | speedup | improvement |
-| --- | ---: | ---: | ---: | ---: |
-| `ac_predictor_forward` | 13.3319 ms | 13.0986 ms | 1.02x | 1.75% |
-
-Repeated CUDA check on the same shape:
-
-| benchmark | baseline | optimized | speedup | improvement |
-| --- | ---: | ---: | ---: | ---: |
-| `ac_predictor_forward` mean | 13.3482 ms | 13.1170 ms | 1.02x | 1.66% |
-
-Supporting benchmark:
-
-- [`benchmarks/ac_predictor_compare.py`](/workspace/vjepa2/benchmarks/ac_predictor_compare.py)
-
-Decision:
-
-- keep,
-- the win is small but repeat-positive,
-- and it removes a real per-forward host/device transfer from the main AC predictor path.
+- reject,
+- keep `src/models/ac_predictor.py` at `HEAD`,
+- do not promote AC predictor glue changes unless they survive repeated caller-level benchmarking on the main path.

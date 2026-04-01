@@ -220,6 +220,54 @@ def compare_rope_attention(baseline_modules, warmup=20, iters=100):
     }
 
 
+def compare_rotate_query_key_pair_train(baseline_modules, warmup=10, iters=50):
+    q = torch.randn(8, 16, 1024, 24, device="cuda", dtype=torch.float16)
+    k = torch.randn(8, 16, 1024, 24, device="cuda", dtype=torch.float16)
+    pos = torch.arange(1024, device="cuda", dtype=torch.float16).view(1, 1, -1)
+
+    def baseline_fn():
+        qq = q.detach().clone().requires_grad_(True)
+        kk = k.detach().clone().requires_grad_(True)
+        return baseline_modules.rotate_query_key_pair(qq, kk, pos)
+
+    def optimized_fn():
+        qq = q.detach().clone().requires_grad_(True)
+        kk = k.detach().clone().requires_grad_(True)
+        return rotate_query_key_pair(qq, kk, pos)
+
+    ref_q = q.detach().clone().requires_grad_(True)
+    ref_k = k.detach().clone().requires_grad_(True)
+    baseline_q, baseline_k = baseline_modules.rotate_query_key_pair(ref_q, ref_k, pos)
+    (baseline_q.square().mean() + baseline_k.square().mean()).backward()
+    ref_q_grad = ref_q.grad.detach().clone()
+    ref_k_grad = ref_k.grad.detach().clone()
+
+    opt_q = q.detach().clone().requires_grad_(True)
+    opt_k = k.detach().clone().requires_grad_(True)
+    optimized_q, optimized_k = rotate_query_key_pair(opt_q, opt_k, pos)
+    (optimized_q.square().mean() + optimized_k.square().mean()).backward()
+    opt_q_grad = opt_q.grad.detach().clone()
+    opt_k_grad = opt_k.grad.detach().clone()
+
+    torch.testing.assert_close(optimized_q, baseline_q, atol=5e-3, rtol=5e-3)
+    torch.testing.assert_close(optimized_k, baseline_k, atol=5e-3, rtol=5e-3)
+    torch.testing.assert_close(opt_q_grad, ref_q_grad, atol=5e-3, rtol=5e-3)
+    torch.testing.assert_close(opt_k_grad, ref_k_grad, atol=5e-3, rtol=5e-3)
+
+    def wrap_train(fn):
+        def run():
+            out_q, out_k = fn()
+            return out_q.square().mean() + out_k.square().mean()
+
+        return run
+
+    return {
+        "name": "rotate_query_key_pair_train",
+        "baseline_ms": benchmark_cuda_backward(wrap_train(baseline_fn), warmup, iters),
+        "optimized_ms": benchmark_cuda_backward(wrap_train(optimized_fn), warmup, iters),
+    }
+
+
 def compare_rope_attention_train(baseline_modules, warmup=10, iters=30):
     kwargs = dict(dim=256, num_heads=8, qkv_bias=True, proj_drop=0.0, attn_drop=0.0, use_sdpa=False, grid_size=8)
     optimized = RoPEAttention(**kwargs).cuda().half().train()
@@ -448,6 +496,7 @@ def main():
         compare_attentive_pooler(),
         compare_rotate_queries_or_keys(),
         compare_rotate_query_key_pair(),
+        compare_rotate_query_key_pair_train(baseline_modules),
         compare_repeat_interleave(baseline_tensors),
         compare_apply_masks(),
         compare_ac_rope_attention(baseline_modules),

@@ -10,8 +10,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import drop_path
 
-from src.models.utils.triton_kernels import can_use_triton_rope_rotate, triton_rotate_queries_or_keys
-
 _INV_FREQ_CACHE = {}
 _POSITION_CACHE = {}
 _SEPARATED_POS_CACHE = {}
@@ -68,8 +66,6 @@ def rotate_queries_or_keys(x, pos):
         omega /= D / 2.0
         omega = 1.0 / 10000**omega  # (D/2,)
         _INV_FREQ_CACHE[key] = omega
-    if can_use_triton_rope_rotate(x, pos):
-        return triton_rotate_queries_or_keys(x, pos, omega)
     freq = pos.unsqueeze(-1) * omega  # (..., N, D/2), outer product
 
     # -- build rotation matrix and apply
@@ -94,6 +90,12 @@ def rotate_queries_or_keys(x, pos):
     y = torch.stack((-y2, y1), dim=-1)
     y = y.flatten(-2)
     return (x * emb_cos) + (y * emb_sin)
+
+
+def rotate_query_key_pair(q, k, pos):
+    qk = torch.cat([q, k], dim=0)
+    qk = rotate_queries_or_keys(qk, pos)
+    return qk[: q.size(0)], qk[q.size(0) :]
 
 
 class DropPath(nn.Module):
@@ -225,8 +227,7 @@ class ACRoPEAttention(nn.Module):
             action_qkv = self.qkv(action_x).unflatten(-1, (3, self.num_heads, -1)).permute(2, 0, 3, 1, 4)
             action_q, action_k, action_v = action_qkv[0], action_qkv[1], action_qkv[2]
             action_pos = _get_cached_positions(T, x.device).view(T, 1).expand(T, action_tokens).reshape(T * action_tokens)
-            qd = rotate_queries_or_keys(action_q[..., : self.d_dim], pos=action_pos)
-            kd = rotate_queries_or_keys(action_k[..., : self.d_dim], pos=action_pos)
+            qd, kd = rotate_query_key_pair(action_q[..., : self.d_dim], action_k[..., : self.d_dim], pos=action_pos)
             qr = action_q[..., self.d_dim :]
             kr = action_k[..., self.d_dim :]
             action_q = torch.cat([qd, qr], dim=-1).view(B, self.num_heads, T, action_tokens, -1).flatten(2, 3)
@@ -240,16 +241,13 @@ class ACRoPEAttention(nn.Module):
 
         s = 0
         # Rotate depth
-        qd = rotate_queries_or_keys(q[..., s : s + self.d_dim], pos=d_mask)
-        kd = rotate_queries_or_keys(k[..., s : s + self.d_dim], pos=d_mask)
+        qd, kd = rotate_query_key_pair(q[..., s : s + self.d_dim], k[..., s : s + self.d_dim], pos=d_mask)
         s += self.d_dim
         # Rotate height dim
-        qh = rotate_queries_or_keys(q[..., s : s + self.h_dim], pos=h_mask)
-        kh = rotate_queries_or_keys(k[..., s : s + self.h_dim], pos=h_mask)
+        qh, kh = rotate_query_key_pair(q[..., s : s + self.h_dim], k[..., s : s + self.h_dim], pos=h_mask)
         s += self.h_dim
         # Rotate width dim
-        qw = rotate_queries_or_keys(q[..., s : s + self.w_dim], pos=w_mask)
-        kw = rotate_queries_or_keys(k[..., s : s + self.w_dim], pos=w_mask)
+        qw, kw = rotate_query_key_pair(q[..., s : s + self.w_dim], k[..., s : s + self.w_dim], pos=w_mask)
         s += self.w_dim
 
         # Combine rotated dimension
@@ -379,16 +377,13 @@ class RoPEAttention(nn.Module):
 
         s = 0
         # Rotate depth
-        qd = rotate_queries_or_keys(q[..., s : s + self.d_dim], pos=d_mask)
-        kd = rotate_queries_or_keys(k[..., s : s + self.d_dim], pos=d_mask)
+        qd, kd = rotate_query_key_pair(q[..., s : s + self.d_dim], k[..., s : s + self.d_dim], pos=d_mask)
         s += self.d_dim
         # Rotate height dim
-        qh = rotate_queries_or_keys(q[..., s : s + self.h_dim], pos=h_mask)
-        kh = rotate_queries_or_keys(k[..., s : s + self.h_dim], pos=h_mask)
+        qh, kh = rotate_query_key_pair(q[..., s : s + self.h_dim], k[..., s : s + self.h_dim], pos=h_mask)
         s += self.h_dim
         # Rotate width dim
-        qw = rotate_queries_or_keys(q[..., s : s + self.w_dim], pos=w_mask)
-        kw = rotate_queries_or_keys(k[..., s : s + self.w_dim], pos=w_mask)
+        qw, kw = rotate_query_key_pair(q[..., s : s + self.w_dim], k[..., s : s + self.w_dim], pos=w_mask)
         s += self.w_dim
 
         # Combine rotated dimension

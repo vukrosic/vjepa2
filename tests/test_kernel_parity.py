@@ -127,13 +127,3 @@ def test_rotate_queries_or_keys_matches_baseline_cuda():
     baseline = _baseline_rotate_queries_or_keys(x, pos)
     optimized = rotate_queries_or_keys(x, pos)
     torch.testing.assert_close(optimized, baseline)
-
-
-def test_rotate_queries_or_keys_matches_baseline_cuda_1d_pos():
-    if not torch.cuda.is_available():
-        return
-    x = torch.randn(2, 3, 8, 12, device="cuda", dtype=torch.float16)
-    pos = torch.arange(8, device="cuda")
-    baseline = _baseline_rotate_queries_or_keys(x, pos)
-    optimized = rotate_queries_or_keys(x, pos)
-    torch.testing.assert_close(optimized, baseline, atol=3e-3, rtol=3e-3)

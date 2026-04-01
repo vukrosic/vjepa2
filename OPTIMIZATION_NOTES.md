@@ -813,7 +813,7 @@ This stays. It keeps the pretrained-compatible behavior, improves the hot
 primitive again, and pushes both RoPE block benchmarks materially farther ahead
 of `HEAD`.
 
-## Step 13: Optional Triton Fast Path For The Main RoPE Rotate
+## Step 13: Triton RoPE Fast Path Experiment (Rejected)
 
 ### Why this was examined
 
@@ -827,28 +827,16 @@ cost concentrated in the actual rotate primitive:
 That is exactly the kind of pattern where a fused kernel can win after the easy
 PyTorch cleanups have already been taken.
 
-### What changed
+### Prototype outcome
 
-I added an optional Triton kernel in
-[`src/models/utils/triton_kernels.py`](/workspace/vjepa2/src/models/utils/triton_kernels.py)
-and wired it into
-[`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py).
+I prototyped an optional Triton kernel out of tree first and only briefly wired
+it into the repo after the forward-only measurements looked very good.
 
-The fast path is only used when all of the following are true:
+The idea was straightforward:
 
-- CUDA is available,
-- Triton is importable,
-- input dtype is `fp16` or `fp32`,
-- input is 4D `[B, H, N, D]`,
-- `D` is even,
-- positions are the common broadcastable shapes:
-  - `(N,)`
-  - `(1, 1, N)`
-
-Everything else stays on the existing PyTorch path.
-
-That gating is deliberate: the goal is to accelerate the main no-mask/default
-RoPE path without risking correctness on the more complex masked shapes.
+- fuse the pair rotation,
+- fuse the sine/cosine application,
+- skip the intermediate RoPE materializations.
 
 ### How the kernel works
 
@@ -879,7 +867,7 @@ already-optimized PyTorch helper:
 
 That was enough to justify integrating it behind the existing API.
 
-### How it was validated
+### Forward-only measurements
 
 Fast parity set:
 
@@ -891,30 +879,7 @@ pytest -q \
   tests/test_model_block_parity.py
 ```
 
-Result after integration:
-
-- `15 passed`
-
-Broader quick validation:
-
-```bash
-cd /workspace/vjepa2
-pytest -q \
-  tests/models/test_models.py \
-  tests/test_predictor_parity.py \
-  tests/models/test_predictor.py \
-  tests/test_kernel_parity.py \
-  tests/models/test_ac_rope_attention.py \
-  tests/test_model_block_parity.py
-```
-
-Result after integration:
-
-- `28 passed`
-
-I also added a direct CUDA parity case for the 1D-position path in
-[`tests/test_kernel_parity.py`](/workspace/vjepa2/tests/test_kernel_parity.py),
-because that is the shape that actually hits the Triton fast path.
+Those numbers were attractive enough that I tried the integration.
 
 ### Updated `HEAD` comparison on GPU
 
@@ -924,13 +889,40 @@ because that is the shape that actually hits the Triton fast path.
 | `rope_attention_forward` | 5.7322 ms | 1.4318 ms | 4.004x |
 | `ac_rope_attention_forward` | 10.2854 ms | 2.5210 ms | 4.080x |
 
-This is the strongest result in the current pass.
+### Why it was rejected
 
-It also changes the next-step recommendation:
+The forward-only numbers were not enough.
 
-- more tiny PyTorch rewrites are now less likely to matter,
-- the main remaining gains are more likely to come from targeted fused kernels
-  or larger algorithmic shifts proved by profiling.
+When I checked gradient flow directly, the Triton path failed the real
+requirement:
+
+- the output tensor did **not** require grad,
+- backward failed immediately.
+
+In other words, the prototype was a forward-only fast path with no usable
+autograd story.
+
+That is a hard reject for this repo because these paths are used in training.
+
+I also ran small full-model default-path checks on the real `use_rope=True`,
+`use_sdpa=True` paths before the revert:
+
+| benchmark | baseline | Triton experiment | speedup |
+| --- | ---: | ---: | ---: |
+| encoder, unmasked | 11.1085 ms | 11.3893 ms | 0.975x |
+| encoder, masked | 25.5810 ms | 25.6768 ms | 0.996x |
+| predictor | 24.0408 ms | 24.4017 ms | 0.985x |
+| action-conditioned predictor | 19.4498 ms | 18.7881 ms | 1.035x |
+
+So even ignoring the autograd failure, the default plain encoder/predictor path
+was not a clean win in these short model-level checks.
+
+Conclusion:
+
+- reverted from the codebase,
+- kept only as a documented experiment,
+- if revisited later, it needs a real autograd-safe design, not just a fast
+  forward kernel.
 
 ## Current Retained Wins
 
@@ -946,7 +938,6 @@ These are the improvements I would currently claim as real:
 | Batched action-token path in `ACRoPEAttention` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong measured win in baseline-vs-`HEAD` block benchmark |
 | RoPE frequency outer-product broadcast | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | clear primitive win and positive RoPE block impact |
 | RoPE compatibility duplication via `cat` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong primitive win and clear RoPE block impact |
-| Optional Triton RoPE fast path | [`src/models/utils/triton_kernels.py`](/workspace/vjepa2/src/models/utils/triton_kernels.py), [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | biggest measured win in the current pass |
 | Predictor broadcast/gather cleanup | [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py) | quick directional win, parity-tested |
 | Encoder single-mask fast path | [`src/models/vision_transformer.py`](/workspace/vjepa2/src/models/vision_transformer.py) | small positive masked-forward win |
 | `AttentivePooler` query broadcast | [`src/models/attentive_pooler.py`](/workspace/vjepa2/src/models/attentive_pooler.py) | small positive forward-path win |

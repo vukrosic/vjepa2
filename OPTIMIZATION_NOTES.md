@@ -1099,3 +1099,68 @@ The standard should stay the same:
 - preserve semantics,
 - compare against baseline,
 - keep only what wins.
+
+## Step 15: Manual Kernel Review And Safety Pass
+
+I revisited the Triton RoPE work with a stricter rule:
+
+- forward-only wins are fine,
+- training-path wins must prove backward correctness,
+- if a manual kernel fails parity, it is removed from the live path immediately.
+
+Two important outcomes came from that pass:
+
+1. The live Triton autograd path was disabled.
+2. The retained Triton kernel is now forward-only for safe no-grad execution.
+
+Why:
+
+- the custom backward did not match the repo's compatibility-preserving RoPE
+  behavior,
+- gradient parity failed,
+- keeping it enabled for training would have been a correctness bug.
+
+Retained measurement for the safe forward-only kernel on `[8, 16, 1024, 64]`,
+`fp16`, CUDA:
+
+| kernel | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `rotate_queries_or_keys` forward | 0.5608 ms | 0.1989 ms | 2.82x |
+
+Validation:
+
+- raw Triton forward checked against a pure PyTorch reference,
+- live gradient path checked through the exported helper,
+- result: forward win retained, live gradients exact because training falls back
+  to PyTorch.
+
+## Step 16: Rejected Manual Kernel Experiments
+
+Three manual-kernel ideas were tried and rejected in this pass:
+
+1. Triton autograd for the RoPE rotate primitive.
+2. A fused Triton multi-axis `q/k` RoPE kernel.
+3. A Triton extension for batched masked positions.
+
+All three looked attractive in principle.
+All three were rejected for the same reason:
+
+- parity first,
+- speed second.
+
+Specific outcomes:
+
+- the autograd path failed gradient parity,
+- the fused multi-axis kernel failed forward parity on realistic shapes,
+- the masked batched-position extension also failed parity even though its
+  microbenchmark looked strong.
+
+This is exactly why the keep/reject loop exists.
+
+## Article Version
+
+For a cleaned-up tutorial version of this work, see
+[`OPTIMIZATION_ARTICLE.md`](/workspace/vjepa2/OPTIMIZATION_ARTICLE.md).
+
+That file keeps the lessons and results organized by topic.
+This file stays the chronological engineering record.

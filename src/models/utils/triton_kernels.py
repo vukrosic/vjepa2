@@ -107,23 +107,5 @@ def triton_rotate_queries_or_keys(x, pos, omega, block_d=64):
     return out
 
 
-class TritonRoPERotate(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, pos, omega):
-        if pos.ndim != 1:
-            pos = pos.reshape(-1)
-        if pos.dtype != x.dtype:
-            pos = pos.to(x.dtype)
-        ctx.save_for_backward(pos, omega)
-        return triton_rotate_queries_or_keys(x, pos, omega)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        pos, omega = ctx.saved_tensors
-        grad_output = grad_output.contiguous()
-        grad_x = triton_rotate_queries_or_keys(grad_output, -pos, omega)
-        return grad_x, None, None
-
-
 def triton_rotate_queries_or_keys_autograd(x, pos, omega):
-    return TritonRoPERotate.apply(x, pos, omega)
+    return triton_rotate_queries_or_keys(x, pos, omega)

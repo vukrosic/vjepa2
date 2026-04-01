@@ -93,6 +93,8 @@ def rotate_queries_or_keys(x, pos):
 
 
 def rotate_query_key_pair(q, k, pos):
+    if pos.ndim > 1 and pos.shape[0] == q.shape[0]:
+        pos = torch.cat([pos, pos], dim=0)
     qk = torch.cat([q, k], dim=0)
     qk = rotate_queries_or_keys(qk, pos)
     return qk[: q.size(0)], qk[q.size(0) :]

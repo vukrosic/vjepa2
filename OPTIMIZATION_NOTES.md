@@ -924,6 +924,120 @@ Conclusion:
 - if revisited later, it needs a real autograd-safe design, not just a fast
   forward kernel.
 
+## Step 14: Fuse `q` And `k` Rotation Calls
+
+### Why this was examined
+
+After rejecting the Triton prototype, the next best RoPE target was still in the
+same area, but now under the constraint that it had to stay fully autograd-safe
+and PyTorch-native.
+
+The attention code still did this pattern repeatedly:
+
+```python
+qd = rotate_queries_or_keys(q_slice, pos)
+kd = rotate_queries_or_keys(k_slice, pos)
+```
+
+for depth, height, and width segments.
+
+That means the same position/frequency work gets repeated once for `q` and once
+for `k`, even though both use the same `pos`.
+
+### Optimization idea
+
+Concatenate `q` and `k` along the leading dimension, rotate once, then split
+them back:
+
+```python
+qk = torch.cat([q, k], dim=0)
+qk = rotate_queries_or_keys(qk, pos)
+q, k = qk[:q.size(0)], qk[q.size(0):]
+```
+
+For masked paths, the same trick works as long as the position tensor is
+duplicated along the matching leading dimension too.
+
+### Fast isolated check
+
+Before patching the modules, I benchmarked the primitive directly:
+
+| case | baseline | fused `qk` rotate | speedup |
+| --- | ---: | ---: | ---: |
+| `B=8, H=6, N=64, D=20` | 0.7759 ms | 0.4426 ms | 1.753x |
+| `B=8, H=6, N=256, D=20` | 0.7806 ms | 0.4626 ms | 1.687x |
+| `B=8, H=16, N=1024, D=20` | 0.7792 ms | 0.4471 ms | 1.743x |
+
+That was strong enough to justify patching the live path.
+
+### What changed
+
+In [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py):
+
+- added a small `rotate_query_key_pair(...)` helper,
+- used it in `RoPEAttention`,
+- used it in `ACRoPEAttention`,
+- used it in the action-token depth-rotation path as well.
+
+### How it was validated
+
+Fast parity set:
+
+```bash
+cd /workspace/vjepa2
+pytest -q \
+  tests/test_kernel_parity.py \
+  tests/models/test_ac_rope_attention.py \
+  tests/test_model_block_parity.py \
+  tests/models/test_models.py
+```
+
+Result during this pass:
+
+- `22 passed`
+
+Broader quick validation:
+
+```bash
+cd /workspace/vjepa2
+pytest -q \
+  tests/models/test_models.py \
+  tests/test_predictor_parity.py \
+  tests/models/test_predictor.py \
+  tests/test_kernel_parity.py \
+  tests/models/test_ac_rope_attention.py \
+  tests/test_model_block_parity.py
+```
+
+Result during this pass:
+
+- `27 passed`
+
+### Updated measurements against `HEAD`
+
+Default SDPA block path:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `RoPEAttention_sdpa_default` | 2.0765 ms | 2.0580 ms | 1.009x |
+| `ACRoPEAttention_sdpa_default` | 3.7601 ms | 3.5005 ms | 1.074x |
+
+Small full-model checks:
+
+| benchmark | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| encoder, unmasked | 16.6889 ms | 16.7961 ms | 0.994x |
+| encoder, masked | 19.1945 ms | 19.2326 ms | 0.998x |
+| predictor | 19.9052 ms | 19.8644 ms | 1.002x |
+| action-conditioned predictor | 26.4677 ms | 26.1636 ms | 1.012x |
+
+Interpretation:
+
+- this is a real, safe win at the RoPE block level,
+- it is close to neutral on the plain full encoder in these short checks,
+- it remains positive on the action-conditioned path,
+- unlike the Triton prototype, it preserves normal training behavior.
+
 ## Current Retained Wins
 
 These are the improvements I would currently claim as real:
@@ -938,6 +1052,7 @@ These are the improvements I would currently claim as real:
 | Batched action-token path in `ACRoPEAttention` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong measured win in baseline-vs-`HEAD` block benchmark |
 | RoPE frequency outer-product broadcast | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | clear primitive win and positive RoPE block impact |
 | RoPE compatibility duplication via `cat` | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | strong primitive win and clear RoPE block impact |
+| Fused `qk` RoPE rotation | [`src/models/utils/modules.py`](/workspace/vjepa2/src/models/utils/modules.py) | safe block-level win, mild positive/neutral full-model effect |
 | Predictor broadcast/gather cleanup | [`src/models/predictor.py`](/workspace/vjepa2/src/models/predictor.py) | quick directional win, parity-tested |
 | Encoder single-mask fast path | [`src/models/vision_transformer.py`](/workspace/vjepa2/src/models/vision_transformer.py) | small positive masked-forward win |
 | `AttentivePooler` query broadcast | [`src/models/attentive_pooler.py`](/workspace/vjepa2/src/models/attentive_pooler.py) | small positive forward-path win |

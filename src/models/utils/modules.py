@@ -3,24 +3,57 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import lru_cache
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import drop_path
 
+from src.models.utils.triton_kernels import can_use_triton_rope_rotate, triton_rotate_queries_or_keys
+
+_INV_FREQ_CACHE = {}
+_POSITION_CACHE = {}
+_SEPARATED_POS_CACHE = {}
+
+
+@lru_cache(maxsize=None)
+def _cached_action_block_causal_attention_mask(T, H, W, add_tokens):
+    N_T = add_tokens + (H * W)
+    frame_mask = torch.ones((T, T), dtype=torch.bool).tril()
+    return frame_mask.repeat_interleave(N_T, dim=0).repeat_interleave(N_T, dim=1)
+
 
 def build_action_block_causal_attention_mask(T, H, W, add_tokens=1):
-    N_T = add_tokens + (H * W)
-    N = T * N_T
-    mask = torch.zeros(N, N).bool()
-    mask_block = torch.ones(N_T, N_T).bool()
-    local_window_time = T
+    return _cached_action_block_causal_attention_mask(int(T), int(H), int(W), int(add_tokens)).clone()
 
-    for t1 in range(T):
-        for t2 in range(max(0, t1 - local_window_time + 1), t1 + 1):
-            mask[t1 * N_T : (t1 + 1) * N_T, t2 * N_T : (t2 + 1) * N_T] = mask_block
 
-    return mask
+def _get_cached_positions(length, device):
+    key = (device.type, device.index, int(length))
+    positions = _POSITION_CACHE.get(key)
+    if positions is None:
+        positions = torch.arange(int(length), device=device)
+        _POSITION_CACHE[key] = positions
+    return positions
+
+
+def _get_cached_separated_positions(T, H, W, grid_size, device):
+    key = (device.type, device.index, int(T), int(H), int(W), int(grid_size))
+    positions = _SEPARATED_POS_CACHE.get(key)
+    if positions is None:
+        ids = _get_cached_positions(int(T * H * W), device)
+        tokens_per_frame = int(H * W)
+        frame_ids = ids // tokens_per_frame
+        ids_in_frame = ids - tokens_per_frame * frame_ids
+        height_ids = ids_in_frame // W
+        width_ids = ids_in_frame - W * height_ids
+        positions = (
+            frame_ids.to(torch.float32),
+            height_ids.to(torch.float32) * (grid_size / H),
+            width_ids.to(torch.float32) * (grid_size / W),
+        )
+        _SEPARATED_POS_CACHE[key] = positions
+    return positions
 
 
 def rotate_queries_or_keys(x, pos):
@@ -28,10 +61,16 @@ def rotate_queries_or_keys(x, pos):
     assert D % 2 == 0, "Embedding dimension must be a multiple of 2 for block matrix rotation"
 
     # -- compute angle for each position
-    omega = torch.arange(D // 2, dtype=x.dtype, device=x.device)
-    omega /= D / 2.0
-    omega = 1.0 / 10000**omega  # (D/2,)
-    freq = torch.einsum("..., f -> ... f", pos, omega)  # (..., N, D/2), outer product
+    key = (x.device.type, x.device.index, x.dtype, D)
+    omega = _INV_FREQ_CACHE.get(key)
+    if omega is None:
+        omega = torch.arange(D // 2, dtype=x.dtype, device=x.device)
+        omega /= D / 2.0
+        omega = 1.0 / 10000**omega  # (D/2,)
+        _INV_FREQ_CACHE[key] = omega
+    if can_use_triton_rope_rotate(x, pos):
+        return triton_rotate_queries_or_keys(x, pos, omega)
+    freq = pos.unsqueeze(-1) * omega  # (..., N, D/2), outer product
 
     # -- build rotation matrix and apply
     emb_sin = freq.sin()  # (..., N, D/2)
@@ -40,8 +79,10 @@ def rotate_queries_or_keys(x, pos):
     # -- Fixing the bug would break compatibility with the pretrained model, but the fix can be applied by commenting
     # -- out the two lines below, and uncommenting the following two lines.
     # -- Thanks to @echosprint, original PR: https://github.com/facebookresearch/vjepa2/pull/15
-    emb_sin = emb_sin.squeeze(-1).repeat(1, 1, 1, 2)
-    emb_cos = emb_cos.squeeze(-1).repeat(1, 1, 1, 2)
+    emb_sin = emb_sin.squeeze(-1)
+    emb_cos = emb_cos.squeeze(-1)
+    emb_sin = torch.cat([emb_sin, emb_sin], dim=-1)
+    emb_cos = torch.cat([emb_cos, emb_cos], dim=-1)
     # emb_sin = emb_sin.repeat_interleave(2, dim=-1)  # (..., N, D)
     # emb_cos = emb_cos.repeat_interleave(2, dim=-1)  # (..., N, D)
 
@@ -170,39 +211,27 @@ class ACRoPEAttention(nn.Module):
 
         # -- compute position of each frame token
         if mask is not None:
-            mask = mask.unsqueeze(1).repeat(1, self.num_heads, 1)
+            mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H, W)
+            h_mask *= self.grid_size / H
+            w_mask *= self.grid_size / W
         else:
-            mask = torch.arange(int(T * H * W), device=x.device)
-            d_mask, h_mask, w_mask = self.separate_positions(mask, H, W)
-
-        # -- snap spatial positions to grid size
-        h_mask *= self.grid_size / H
-        w_mask *= self.grid_size / W
+            d_mask, h_mask, w_mask = _get_cached_separated_positions(T, H, W, self.grid_size, x.device)
 
         # -- split out action tokens from sequence
         if action_tokens > 0:
             x = x.view(B, -1, action_tokens + H * W, C)  # [B, T, 1+H*W, D]
-
-            action_q, action_k, action_v = [], [], []
-            for i in range(action_tokens):
-                a = x[:, :, i : i + 1, :].flatten(1, 2)
-                # Note action tokens do not work with masking
-                # -- compute qkv for action tokens and rotate
-                qkv = self.qkv(a).unflatten(-1, (3, self.num_heads, -1)).permute(2, 0, 3, 1, 4)
-                q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, D]
-                # --
-                qd = rotate_queries_or_keys(q[..., : self.d_dim], pos=torch.arange(T, device=x.device))
-                kd = rotate_queries_or_keys(k[..., : self.d_dim], pos=torch.arange(T, device=x.device))
-                qr = q[..., self.d_dim :]
-                kr = k[..., self.d_dim :]
-                action_q += [torch.cat([qd, qr], dim=-1).view(B, self.num_heads, T, 1, -1)]
-                action_k += [torch.cat([kd, kr], dim=-1).view(B, self.num_heads, T, 1, -1)]
-                action_v += [v.view(B, self.num_heads, T, 1, -1)]
-
-            action_q = torch.cat(action_q, dim=3).flatten(2, 3)
-            action_k = torch.cat(action_k, dim=3).flatten(2, 3)
-            action_v = torch.cat(action_v, dim=3).flatten(2, 3)
+            action_x = x[:, :, :action_tokens, :].flatten(1, 2)
+            action_qkv = self.qkv(action_x).unflatten(-1, (3, self.num_heads, -1)).permute(2, 0, 3, 1, 4)
+            action_q, action_k, action_v = action_qkv[0], action_qkv[1], action_qkv[2]
+            action_pos = _get_cached_positions(T, x.device).view(T, 1).expand(T, action_tokens).reshape(T * action_tokens)
+            qd = rotate_queries_or_keys(action_q[..., : self.d_dim], pos=action_pos)
+            kd = rotate_queries_or_keys(action_k[..., : self.d_dim], pos=action_pos)
+            qr = action_q[..., self.d_dim :]
+            kr = action_k[..., self.d_dim :]
+            action_q = torch.cat([qd, qr], dim=-1).view(B, self.num_heads, T, action_tokens, -1).flatten(2, 3)
+            action_k = torch.cat([kd, kr], dim=-1).view(B, self.num_heads, T, action_tokens, -1).flatten(2, 3)
+            action_v = action_v.view(B, self.num_heads, T, action_tokens, -1).flatten(2, 3)
             x = x[:, :, action_tokens:, :].flatten(1, 2)
 
         # -- compute qkv for frame tokens and rotate
@@ -336,14 +365,17 @@ class RoPEAttention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, D]
 
         if mask is not None:
-            mask = mask.unsqueeze(1).repeat(1, self.num_heads, 1)
+            mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
         else:
             if T is None or H_patches is None or W_patches is None:
-                mask = torch.arange(int(grid_depth * self.grid_size * self.grid_size), device=x.device)
+                d_mask, h_mask, w_mask = _get_cached_separated_positions(
+                    grid_depth, self.grid_size, self.grid_size, self.grid_size, x.device
+                )
             else:
-                mask = torch.arange(int(T * H_patches * W_patches), device=x.device)
-            d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
+                d_mask, h_mask, w_mask = _get_cached_separated_positions(
+                    T, H_patches, W_patches, self.grid_size, x.device
+                )
 
         s = 0
         # Rotate depth

@@ -13,9 +13,14 @@ def apply_masks(x, masks, concat=True):
     """
     all_x = []
     for m in masks:
-        mask_keep = m.unsqueeze(-1).repeat(1, 1, x.size(-1))
+        mask_keep = m.unsqueeze(-1)
+        if m.ndim == 1:
+            mask_keep = mask_keep.unsqueeze(0)
+        mask_keep = mask_keep.expand(*mask_keep.shape[:-1], x.size(-1))
         all_x += [torch.gather(x, dim=1, index=mask_keep)]
     if not concat:
         return all_x
+    if len(all_x) == 1:
+        return all_x[0]
 
     return torch.cat(all_x, dim=0)

@@ -190,7 +190,7 @@ class VisionTransformer(nn.Module):
         # Mask away unwanted tokens (if masks provided)
         if masks is not None:
             x = apply_masks(x, masks)
-            masks = torch.cat(masks, dim=0)
+            masks = masks[0] if len(masks) == 1 else torch.cat(masks, dim=0)
 
         # Fwd prop
         outs = []

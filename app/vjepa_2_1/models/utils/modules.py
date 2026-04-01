@@ -10,6 +10,18 @@ import torch.nn.functional as F
 
 from timm.models.layers import drop_path
 
+_INV_FREQ_CACHE = {}
+_POSITION_CACHE = {}
+
+
+def _get_cached_positions(length, device):
+    key = (device.type, device.index, int(length))
+    positions = _POSITION_CACHE.get(key)
+    if positions is None:
+        positions = torch.arange(int(length), device=device)
+        _POSITION_CACHE[key] = positions
+    return positions
+
 
 def rotate_queries_or_keys(x, pos, n_registers, has_cls_first):
     B, num_heads, N, D = x.size()
@@ -25,9 +37,13 @@ def rotate_queries_or_keys(x, pos, n_registers, has_cls_first):
     x_ctx = x[..., start_ctx:end_ctx, :]
     x_reg = x[..., end_ctx:, :] if n_registers > 0 else None
 
-    omega = torch.arange(D // 2, dtype=x.dtype, device=x.device)
-    omega /= D / 2.0
-    omega = 1.0 / 10000**omega
+    key = (x.device.type, x.device.index, x.dtype, D)
+    omega = _INV_FREQ_CACHE.get(key)
+    if omega is None:
+        omega = torch.arange(D // 2, dtype=x.dtype, device=x.device)
+        omega /= D / 2.0
+        omega = 1.0 / 10000**omega
+        _INV_FREQ_CACHE[key] = omega
     freq = torch.einsum("..., f -> ... f", pos, omega)
 
     emb_sin = freq.sin()
@@ -52,8 +68,6 @@ def rotate_queries_or_keys(x, pos, n_registers, has_cls_first):
     out = torch.cat(parts, dim=-2)
 
     return out
-
-
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
 
@@ -213,15 +227,13 @@ class RoPEAttention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         if mask is not None:
-            mask = mask.unsqueeze(1).repeat(1, self.num_heads, 1)
+            mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
         else:
             if T is None or H_patches is None or W_patches is None:
-                mask = torch.arange(
-                    int(grid_depth * self.grid_size * self.grid_size), device=x.device
-                )
+                mask = _get_cached_positions(int(grid_depth * self.grid_size * self.grid_size), x.device)
             else:
-                mask = torch.arange(int(T * H_patches * W_patches), device=x.device)
+                mask = _get_cached_positions(int(T * H_patches * W_patches), x.device)
             d_mask, h_mask, w_mask = self.separate_positions(mask, H_patches, W_patches)
 
         if self.interpolate_rope:

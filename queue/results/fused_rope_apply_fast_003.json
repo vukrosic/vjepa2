@@ -1,0 +1,9 @@
+{
+  "id": "fused_rope_apply_fast_003",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n_____________________ test_forward_parity[dtype0-vit_l64] ______________________\ntests/queue/test_fused_rope_apply_fast.py:21: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: The values for attribute 'dtype' do not match: torch.float16 != torch.float32.\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_rope_apply_fast.py::test_forward_parity[dtype0-vit_l64]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.11s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T07:57:36.151566"
+}

@@ -18,12 +18,13 @@ def baseline_fn(scores):
 # --- KERNEL ---
 @triton.jit
 def _softmax_max_kernel(X, MAX_OUT, N, BLOCK: tl.constexpr):
-    """One program per N-element row. Computes row max."""
+    """One program per N-element row. Computes row max using block-level reduction."""
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < N
     x = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)
-    mx = tl.max(x, axis=0)
+    # Block-level max reduction: tl.max without axis returns scalar max over all elements
+    mx = tl.max(tl.where(mask, x, -float("inf")))
     tl.store(MAX_OUT + pid, mx)
 
 

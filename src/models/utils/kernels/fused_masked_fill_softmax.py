@@ -54,7 +54,7 @@ def _fused_masked_fill_softmax_fwd(
         s = s * scale
         mask_val = tl.load(MASK + mask_base + cols, mask=mask_col, other=0).to(tl.float32)
         s = tl.where(mask_val > 0, s, -float("inf"))
-        m = tl.maximum(m, tl.max(s, axis=0))
+        m = tl.where(s > m, s, m)
 
     # --- Accumulate exp sum ---
     acc = tl.zeros([BLOCK_N], dtype=tl.float32)

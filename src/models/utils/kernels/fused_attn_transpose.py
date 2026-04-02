@@ -38,14 +38,20 @@ def _attn_transpose_kernel(
     n_idx = (pid // H) % N
     b_idx = pid // (H * N)
 
+    # Block-level offs for proper Triton 3.2 pointer arithmetic
     offs_d = tl.arange(0, BLOCK_D)
     mask_d = offs_d < D
 
-    src_off = b_idx * H * N * D + h_idx * N * D + n_idx * D
-    dst_off = b_idx * N * H * D + n_idx * H * D + h_idx * D
+    # Compute block-level base offsets
+    src_base = b_idx * H * N * D + h_idx * N * D + n_idx * D
+    dst_base = b_idx * N * H * D + n_idx * H * D + h_idx * D
 
-    x = tl.load(X_ptr + src_off + offs_d, mask=mask_d)
-    tl.store(Y_ptr + dst_off + offs_d, x, mask=mask_d)
+    # Block-level pointer arithmetic: broadcast scalar to block-level
+    src_off = src_base + offs_d
+    dst_off = dst_base + offs_d
+
+    x = tl.load(X_ptr + src_off, mask=mask_d)
+    tl.store(Y_ptr + dst_off, x, mask=mask_d)
 
 
 @triton.jit
@@ -61,14 +67,20 @@ def _attn_transpose_bwd_kernel(
     n_idx = (pid // H) % N
     b_idx = pid // (H * N)
 
+    # Block-level offs for proper Triton 3.2 pointer arithmetic
     offs_d = tl.arange(0, BLOCK_D)
     mask_d = offs_d < D
 
-    src_off = b_idx * N * H * D + n_idx * H * D + h_idx * D
-    dst_off = b_idx * H * N * D + h_idx * N * D + n_idx * D
+    # Compute block-level base offsets
+    src_base = b_idx * N * H * D + n_idx * H * D + h_idx * D
+    dst_base = b_idx * H * N * D + h_idx * N * D + n_idx * D
 
-    dy = tl.load(DY_ptr + src_off + offs_d, mask=mask_d)
-    tl.store(DX_ptr + dst_off + offs_d, dy, mask=mask_d)
+    # Block-level pointer arithmetic: broadcast scalar to block-level
+    src_off = src_base + offs_d
+    dst_off = dst_base + offs_d
+
+    dy = tl.load(DY_ptr + src_off, mask=mask_d)
+    tl.store(DX_ptr + dst_off, dy, mask=mask_d)
 
 
 class FusedAttnTranspose(torch.autograd.Function):
@@ -81,12 +93,12 @@ class FusedAttnTranspose(torch.autograd.Function):
             x_c, y, B, N, H, D=D, BLOCK_D=BLOCK_D,
             num_warps=min(8, max(1, BLOCK_D // 32)),
         )
-        ctx.save_for_backward((B, N, H, D))
+        ctx.B = B; ctx.N = N; ctx.H = H; ctx.D = D
         return y
 
     @staticmethod
     def backward(ctx, dy):
-        B, N, H, D = ctx.saved_tensors
+        B, N, H, D = ctx.B, ctx.N, ctx.H, ctx.D
         B, N, H, D = int(B), int(N), int(H), int(D)
         dx = torch.empty(B, H, N, D, dtype=dy.dtype, device=dy.device)
         BLOCK_D = triton.next_power_of_2(D)

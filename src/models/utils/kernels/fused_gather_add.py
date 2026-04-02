@@ -37,11 +37,9 @@ class FusedGatherAdd(torch.autograd.Function):
             idx = tl.load(IDX + pid).to(tl.int32)
             x_base = b * M * D + idx * D
             out_base = pid * D
-            for off in range(0, D, BLOCK_D):
-                cols = off + tl.arange(0, BLOCK_D)
-                mask = cols < D
-                val = tl.load(X + x_base + cols, mask=mask, other=0.0)
-                tl.store(OUT + out_base + cols, val, mask=mask)
+            for c in range(D):
+                val = tl.load(X + x_base + c).to(tl.float32)
+                tl.store(OUT + out_base + c, val)
 
         BLOCK_D = min(triton.next_power_of_2(D), 2048)
         _gather_kernel[(B * M,)](
@@ -69,11 +67,9 @@ class FusedGatherAdd(torch.autograd.Function):
             idx = tl.load(IDX + pid).to(tl.int32)
             g_base = pid * D
             x_base = b * M * D + idx * D
-            for off in range(0, D, BLOCK_D):
-                cols = off + tl.arange(0, BLOCK_D)
-                mask = cols < D
-                g = tl.load(G + g_base + cols, mask=mask, other=0.0)
-                tl.atomic_add(GX + x_base + cols, g, mask=mask)
+            for c in range(D):
+                g_val = tl.load(G + g_base + c).to(tl.float32)
+                tl.atomic_add(GX + x_base + c, g_val)
 
         BLOCK_D = min(triton.next_power_of_2(D), 2048)
         grad_out_flat = grad_out.view(B * M, D)

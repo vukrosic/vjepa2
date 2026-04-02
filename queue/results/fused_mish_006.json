@@ -1,0 +1,25 @@
+{
+  "id": "fused_mish_006",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "............                                                             [100%]\n12 passed in 7.17s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0805,
+      "kernel_ms": 0.1214,
+      "speedup": 0.663
+    },
+    "vit_h": {
+      "baseline_ms": 0.1965,
+      "kernel_ms": 0.1961,
+      "speedup": 1.002
+    },
+    "small": {
+      "baseline_ms": 0.032,
+      "kernel_ms": 0.1228,
+      "speedup": 0.26
+    }
+  },
+  "benchmark_output": "vit_l: 0.0805 ms -> 0.1214 ms (0.66x)\nvit_h: 0.1965 ms -> 0.1961 ms (1.00x)\nsmall: 0.0320 ms -> 0.1228 ms (0.26x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0805, \"kernel_ms\": 0.1214, \"speedup\": 0.663}, \"vit_h\": {\"baseline_ms\": 0.1965, \"kernel_ms\": 0.1961, \"speedup\": 1.002}, \"small\": {\"baseline_ms\": 0.032, \"kernel_ms\": 0.1228, \"speedup\": 0.26}}\n",
+  "timestamp": "2026-04-02T07:53:39.707306"
+}

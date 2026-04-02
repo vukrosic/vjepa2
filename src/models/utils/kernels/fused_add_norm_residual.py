@@ -28,13 +28,15 @@ def _fused_add_norm_fwd(
     then normalizes and stores.
     """
     pid = tl.program_id(0)
-    row_base = pid * D
     offs = tl.arange(0, BLOCK_D)
     mask = offs < D
 
-    x0 = tl.load(X + row_base + offs, mask=mask, other=0.0).to(tl.float32)
-    x1 = tl.load(B1 + row_base + offs, mask=mask, other=0.0).to(tl.float32)
-    x2 = tl.load(B2 + row_base + offs, mask=mask, other=0.0).to(tl.float32)
+    # row_base as block-level tensor to match offs arithmetic
+    row_base = offs + pid * D
+
+    x0 = tl.load(X + row_base, mask=mask, other=0.0).to(tl.float32)
+    x1 = tl.load(B1 + row_base, mask=mask, other=0.0).to(tl.float32)
+    x2 = tl.load(B2 + row_base, mask=mask, other=0.0).to(tl.float32)
     row = x0 + x1 + x2
 
     mean = tl.sum(row, axis=0) / D
@@ -45,7 +47,7 @@ def _fused_add_norm_fwd(
     w = tl.load(W + offs, mask=mask, other=0.0).to(tl.float32)
     b = tl.load(B_out + offs, mask=mask, other=0.0).to(tl.float32)
     out = norm * w + b
-    tl.store(Y + row_base + offs, out, mask=mask)
+    tl.store(Y + row_base, out, mask=mask)
 
 
 class FusedAddNormResidual(torch.autograd.Function):

@@ -1,0 +1,25 @@
+{
+  "id": "fused_layernorm_add_003",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 8.08s\n",
+  "benchmark": {
+    "vit_small": {
+      "baseline_ms": 0.0904,
+      "kernel_ms": 0.1635,
+      "speedup": 0.553
+    },
+    "vit_l": {
+      "baseline_ms": 0.0835,
+      "kernel_ms": 0.1757,
+      "speedup": 0.475
+    },
+    "vit_h": {
+      "baseline_ms": 0.081,
+      "kernel_ms": 0.1491,
+      "speedup": 0.543
+    }
+  },
+  "benchmark_output": "vit_small: 0.0904 ms -> 0.1635 ms (0.55x)\nvit_l: 0.0835 ms -> 0.1757 ms (0.47x)\nvit_h: 0.0810 ms -> 0.1491 ms (0.54x)\nBENCH_RESULT={\"vit_small\": {\"baseline_ms\": 0.0904, \"kernel_ms\": 0.1635, \"speedup\": 0.553}, \"vit_l\": {\"baseline_ms\": 0.0835, \"kernel_ms\": 0.1757, \"speedup\": 0.475}, \"vit_h\": {\"baseline_ms\": 0.081, \"kernel_ms\": 0.1491, \"speedup\": 0.543}}\n",
+  "timestamp": "2026-04-02T07:56:55.169880"
+}

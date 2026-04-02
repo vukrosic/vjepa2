@@ -1,0 +1,25 @@
+{
+  "id": "fused_sincos_embed_003",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 5.50s\n",
+  "benchmark": {
+    "vit_l_1d": {
+      "baseline_ms": 0.3733,
+      "kernel_ms": 0.1075,
+      "speedup": 3.472
+    },
+    "vit_h_1d": {
+      "baseline_ms": 0.3732,
+      "kernel_ms": 0.108,
+      "speedup": 3.456
+    },
+    "small": {
+      "baseline_ms": 0.371,
+      "kernel_ms": 0.1066,
+      "speedup": 3.479
+    }
+  },
+  "benchmark_output": "vit_l_1d: 0.3733 ms -> 0.1075 ms (3.47x)\nvit_h_1d: 0.3732 ms -> 0.1080 ms (3.46x)\nsmall: 0.3710 ms -> 0.1066 ms (3.48x)\nBENCH_RESULT={\"vit_l_1d\": {\"baseline_ms\": 0.3733, \"kernel_ms\": 0.1075, \"speedup\": 3.472}, \"vit_h_1d\": {\"baseline_ms\": 0.3732, \"kernel_ms\": 0.108, \"speedup\": 3.456}, \"small\": {\"baseline_ms\": 0.371, \"kernel_ms\": 0.1066, \"speedup\": 3.479}}\n",
+  "timestamp": "2026-04-02T07:54:30.184161"
+}

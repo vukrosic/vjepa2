@@ -42,23 +42,13 @@ def _argsort_gather_kernel(
     b = pid // N
     n = pid % N
 
-    offs_d = tl.arange(0, BLOCK_D)
-    mask_d = offs_d < D
-
-    # Load sorted indices for this row: IDX[b, :]
-    # IDX layout: [B, N]
-    # sorted_idx[b, n] = IDX[b*N + n]
-    sorted_idx_n = tl.load(IDX + b * N + tl.arange(0, BLOCK_D), mask=mask_d, other=0).to(tl.int64)
-
-    # For each d: x_out[b, n, d] = x_in[b, sorted_idx[d], d]
-    # Wait, sorted_idx is per-row (N elements), not per-feature
-    # All features use the same sorted index per row
     row_idx = tl.load(IDX + b * N + n).to(tl.int32)
 
-    # Load the source row
+    # Load the source row using pure scalar loads (no block mask needed for D-sized rows)
     src_base = b * N * D + row_idx * D
-    x_vals = tl.load(X + src_base + offs_d, mask=mask_d, other=0.0)
-    tl.store(OUT + pid * D + offs_d, x_vals, mask=mask_d)
+    for c in range(D):
+        val = tl.load(X + src_base + c).to(tl.float32)
+        tl.store(OUT + pid * D + c, val)
 
 
 class FusedArgsortGather(torch.autograd.Function):
@@ -88,10 +78,14 @@ class FusedArgsortGather(torch.autograd.Function):
             b = pid // N
             n = pid % N
             row_idx = tl.load(IDX + b * N + n).to(tl.int32)
-            offs_d = tl.arange(0, BLOCK_D)
-            mask_d = offs_d < D
-            go_vals = tl.load(GO + pid * D + offs_d, mask=mask_d, other=0.0)
-            tl.store(GX + b * N * D + row_idx * D + offs_d, go_vals, mask=mask_d)
+            # Use block-level offs for proper pointer arithmetic
+            offs = tl.arange(0, BLOCK_D)
+            mask = offs < D
+            # Load full row using block-level pointers
+            go_ptrs = pid * D + offs
+            gx_ptrs = (b * N * D + row_idx * D) + offs
+            g_vals = tl.load(go_ptrs, mask=mask, other=0.0).to(tl.float32)
+            tl.store(gx_ptrs, g_vals, mask=mask)
 
         BLOCK_D = triton.next_power_of_2(D)
         _scatter_kernel[(B * N,)](

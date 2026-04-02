@@ -1,0 +1,25 @@
+{
+  "id": "fused_l2_distance_004",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "......                                                                   [100%]\n6 passed in 5.62s\n",
+  "benchmark": {
+    "small": {
+      "baseline_ms": 0.0844,
+      "kernel_ms": 0.1253,
+      "speedup": 0.674
+    },
+    "medium": {
+      "baseline_ms": 0.1001,
+      "kernel_ms": 0.1244,
+      "speedup": 0.804
+    },
+    "large": {
+      "baseline_ms": 0.1041,
+      "kernel_ms": 0.1258,
+      "speedup": 0.828
+    }
+  },
+  "benchmark_output": "small: 0.0844 ms -> 0.1253 ms (0.67x)\nmedium: 0.1001 ms -> 0.1244 ms (0.80x)\nlarge: 0.1041 ms -> 0.1258 ms (0.83x)\nBENCH_RESULT={\"small\": {\"baseline_ms\": 0.0844, \"kernel_ms\": 0.1253, \"speedup\": 0.674}, \"medium\": {\"baseline_ms\": 0.1001, \"kernel_ms\": 0.1244, \"speedup\": 0.804}, \"large\": {\"baseline_ms\": 0.1041, \"kernel_ms\": 0.1258, \"speedup\": 0.828}}\n",
+  "timestamp": "2026-04-02T07:53:53.402104"
+}

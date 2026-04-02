@@ -31,16 +31,11 @@ def _fused_idx_select_mean_fwd(
     """
     pid_b = tl.program_id(0)
     pid_d = tl.program_id(1)
-    offs_m = tl.arange(0, BLOCK_M)
-    mask_m = offs_m < M
 
-    # Load M indices for this batch
-    idx_block = tl.load(INDICES + pid_b * M + offs_m, mask=mask_m, other=0).to(tl.int32)
-
-    # Accumulate sum over M indices for this (b, d)
+    # Accumulate sum over M indices for this (b, d) using pure scalar loads
     acc = 0.0
     for m in range(M):
-        idx = tl.load(INDICES + pid_b * M + m)
+        idx = tl.load(INDICES + pid_b * M + m).to(tl.int32)
         x_ptr = pid_b * N * D + idx * D + pid_d
         val = tl.load(X + x_ptr).to(tl.float32)
         acc += val

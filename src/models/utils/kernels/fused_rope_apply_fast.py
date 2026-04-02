@@ -29,26 +29,24 @@ def _fused_rope_fwd(X, COS, SIN, Y, B: tl.constexpr, H: tl.constexpr, N: tl.cons
     pid_b = tl.program_id(0)
     pid_h = tl.program_id(1)
     pid_n = tl.program_id(2)
-    offs_d = tl.arange(0, BLOCK_D)
     half = D // 2
-    mask_d = offs_d < D
+    base = pid_b * H * N * D + pid_h * N * D + pid_n * D
+    cos_base = pid_n * half
     for d0 in range(0, half, BLOCK_D // 2):
-        # Even pair: (d0, d0+half)
-        d_e = d0 + offs_d
-        d_o = d0 + half + offs_d
-        mask_e = d_e < half
-        mask_o = d_o < D
-        # Load x1, x2
-        x1 = tl.load(X + pid_b * H * N * D + pid_h * N * D + pid_n * D + d_e, mask=mask_e, other=0.0).to(tl.float32)
-        x2 = tl.load(X + pid_b * H * N * D + pid_h * N * D + pid_n * D + d_o, mask=mask_o, other=0.0).to(tl.float32)
-        # Load cos, sin (stored compact at [N, half])
-        cos_e = tl.load(COS + pid_n * half + d_e, mask=mask_e, other=0.0).to(tl.float32)
-        sin_e = tl.load(SIN + pid_n * half + d_e, mask=mask_e, other=0.0).to(tl.float32)
+        offs = tl.arange(0, BLOCK_D // 2)
+        mask_e = (d0 + offs) < half
+        mask_o = (d0 + half + offs) < D
+        # Load x1, x2 using pure scalar loads (pointer arithmetic is scalar)
+        x1 = tl.load(X + base + d0 + offs, mask=mask_e, other=0.0).to(tl.float32)
+        x2 = tl.load(X + base + d0 + half + offs, mask=mask_o, other=0.0).to(tl.float32)
+        # Load cos, sin using scalar loads
+        cos_vals = tl.load(COS + cos_base + d0 + offs, mask=mask_e, other=0.0).to(tl.float32)
+        sin_vals = tl.load(SIN + cos_base + d0 + offs, mask=mask_e, other=0.0).to(tl.float32)
         # Apply rotation: x1' = x1 * cos - x2 * sin, x2' = x1 * sin + x2 * cos
-        x1r = x1 * cos_e - x2 * sin_e
-        x2r = x1 * sin_e + x2 * cos_e
-        tl.store(Y + pid_b * H * N * D + pid_h * N * D + pid_n * D + d_e, x1r, mask=mask_e)
-        tl.store(Y + pid_b * H * N * D + pid_h * N * D + pid_n * D + d_o, x2r, mask=mask_o)
+        x1r = x1 * cos_vals - x2 * sin_vals
+        x2r = x1 * sin_vals + x2 * cos_vals
+        tl.store(Y + base + d0 + offs, x1r, mask=mask_e)
+        tl.store(Y + base + d0 + half + offs, x2r, mask=mask_o)
 
 
 def _precompute_cos_sin(pos, half, device, dtype):

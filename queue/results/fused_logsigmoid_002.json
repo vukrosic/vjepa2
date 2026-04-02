@@ -1,0 +1,27 @@
+{
+  "id": "fused_logsigmoid_002",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 6.75s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0419,
+      "kernel_ms": 0.1212,
+      "speedup": 0.346
+    },
+    "vit_h": {
+      "baseline_ms": 0.0999,
+      "kernel_ms": 0.1215,
+      "speedup": 0.822
+    },
+    "small": {
+      "baseline_ms": 0.0335,
+      "kernel_ms": 0.1223,
+      "speedup": 0.274
+    }
+  },
+  "benchmark_output": "vit_l: 0.0419 ms -> 0.1212 ms (0.35x)\nvit_h: 0.0999 ms -> 0.1215 ms (0.82x)\nsmall: 0.0335 ms -> 0.1223 ms (0.27x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0419, \"kernel_ms\": 0.1212, \"speedup\": 0.346}, \"vit_h\": {\"baseline_ms\": 0.0999, \"kernel_ms\": 0.1215, \"speedup\": 0.822}, \"small\": {\"baseline_ms\": 0.0335, \"kernel_ms\": 0.1223, \"speedup\": 0.274}}\n",
+  "timestamp": "2026-04-02T08:32:08.793030",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 6.75s"
+}

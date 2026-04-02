@@ -1,0 +1,27 @@
+{
+  "id": "fused_exp2_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.11s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0418,
+      "kernel_ms": 0.1314,
+      "speedup": 0.318
+    },
+    "vit_h": {
+      "baseline_ms": 0.0997,
+      "kernel_ms": 0.1309,
+      "speedup": 0.762
+    },
+    "small": {
+      "baseline_ms": 0.0266,
+      "kernel_ms": 0.1331,
+      "speedup": 0.2
+    }
+  },
+  "benchmark_output": "vit_l: 0.0418 ms -> 0.1314 ms (0.32x)\nvit_h: 0.0997 ms -> 0.1309 ms (0.76x)\nsmall: 0.0266 ms -> 0.1331 ms (0.20x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0418, \"kernel_ms\": 0.1314, \"speedup\": 0.318}, \"vit_h\": {\"baseline_ms\": 0.0997, \"kernel_ms\": 0.1309, \"speedup\": 0.762}, \"small\": {\"baseline_ms\": 0.0266, \"kernel_ms\": 0.1331, \"speedup\": 0.2}}\n",
+  "timestamp": "2026-04-02T08:34:00.483918",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 7.11s"
+}

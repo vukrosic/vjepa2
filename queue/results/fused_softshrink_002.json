@@ -1,0 +1,11 @@
+{
+  "id": "fused_softshrink_002",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "......F\n=================================== FAILURES ===================================\n_________________________ test_backward_parity[vit_l] __________________________\ntests/queue/test_fused_softshrink.py:30: in test_backward_parity\n    torch.testing.assert_close(x2.grad, x1.grad, atol=1e-3, rtol=1e-3)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 1 / 8388608 (0.0%)\nE   Greatest absolute difference: 0.6383753418922424 at index (1, 689, 4031) (up to 0.001 allowed)\nE   Greatest relative difference: inf at index (1, 689, 4031) (up to 0.001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_softshrink.py::test_backward_parity[vit_l] - As...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 passed in 6.82s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:31:51.847150",
+  "failure_category": "NUMERICAL_MISMATCH",
+  "failure_excerpt": "......F =================================== FAILURES =================================== _________________________ test_backward_parity[vit_l] __________________________ tests/queue/test_fused_softshrink.py:30: in test_backward_parity torch"
+}

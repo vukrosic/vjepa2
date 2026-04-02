@@ -1,0 +1,27 @@
+{
+  "id": "fused_softsign_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.12s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.1435,
+      "kernel_ms": 0.137,
+      "speedup": 1.048
+    },
+    "vit_h": {
+      "baseline_ms": 0.3473,
+      "kernel_ms": 0.137,
+      "speedup": 2.534
+    },
+    "small": {
+      "baseline_ms": 0.1092,
+      "kernel_ms": 0.1365,
+      "speedup": 0.8
+    }
+  },
+  "benchmark_output": "vit_l: 0.1435 ms -> 0.1370 ms (1.05x)\nvit_h: 0.3473 ms -> 0.1370 ms (2.53x)\nsmall: 0.1092 ms -> 0.1365 ms (0.80x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.1435, \"kernel_ms\": 0.137, \"speedup\": 1.048}, \"vit_h\": {\"baseline_ms\": 0.3473, \"kernel_ms\": 0.137, \"speedup\": 2.534}, \"small\": {\"baseline_ms\": 0.1092, \"kernel_ms\": 0.1365, \"speedup\": 0.8}}\n",
+  "timestamp": "2026-04-02T08:33:17.433730",
+  "failure_category": "PARTIAL_BENCH_WIN",
+  "failure_excerpt": "......... [100%] 9 passed in 7.12s"
+}

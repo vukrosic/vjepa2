@@ -1,0 +1,27 @@
+{
+  "id": "fused_add_scale_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.16s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.1024,
+      "kernel_ms": 0.1307,
+      "speedup": 0.783
+    },
+    "vit_h": {
+      "baseline_ms": 0.2468,
+      "kernel_ms": 0.1467,
+      "speedup": 1.682
+    },
+    "small": {
+      "baseline_ms": 0.0621,
+      "kernel_ms": 0.1314,
+      "speedup": 0.473
+    }
+  },
+  "benchmark_output": "vit_l: 0.1024 ms -> 0.1307 ms (0.78x)\nvit_h: 0.2468 ms -> 0.1467 ms (1.68x)\nsmall: 0.0621 ms -> 0.1314 ms (0.47x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.1024, \"kernel_ms\": 0.1307, \"speedup\": 0.783}, \"vit_h\": {\"baseline_ms\": 0.2468, \"kernel_ms\": 0.1467, \"speedup\": 1.682}, \"small\": {\"baseline_ms\": 0.0621, \"kernel_ms\": 0.1314, \"speedup\": 0.473}}\n",
+  "timestamp": "2026-04-02T08:32:21.308066",
+  "failure_category": "PARTIAL_BENCH_WIN",
+  "failure_excerpt": "......... [100%] 9 passed in 7.16s"
+}

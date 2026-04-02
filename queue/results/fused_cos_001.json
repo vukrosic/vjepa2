@@ -1,0 +1,27 @@
+{
+  "id": "fused_cos_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 8.54s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.042,
+      "kernel_ms": 0.1404,
+      "speedup": 0.299
+    },
+    "vit_h": {
+      "baseline_ms": 0.1,
+      "kernel_ms": 0.1401,
+      "speedup": 0.714
+    },
+    "small": {
+      "baseline_ms": 0.0301,
+      "kernel_ms": 0.1404,
+      "speedup": 0.215
+    }
+  },
+  "benchmark_output": "vit_l: 0.0420 ms -> 0.1404 ms (0.30x)\nvit_h: 0.1000 ms -> 0.1401 ms (0.71x)\nsmall: 0.0301 ms -> 0.1404 ms (0.21x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.042, \"kernel_ms\": 0.1404, \"speedup\": 0.299}, \"vit_h\": {\"baseline_ms\": 0.1, \"kernel_ms\": 0.1401, \"speedup\": 0.714}, \"small\": {\"baseline_ms\": 0.0301, \"kernel_ms\": 0.1404, \"speedup\": 0.215}}\n",
+  "timestamp": "2026-04-02T08:33:31.137883",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 8.54s"
+}

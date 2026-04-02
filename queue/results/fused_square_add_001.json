@@ -1,0 +1,11 @@
+{
+  "id": "fused_square_add_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_square_add.py:20: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 9931 / 8388608 (0.1%)\nE   Greatest absolute difference: 0.015625 at index (0, 5, 425) (up to 0.005 allowed)\nE   Greatest relative difference: 0.0011110305786132812 at index (1, 1021, 2168) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_square_add.py::test_forward_parity[dtype0-vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.64s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:34:23.088554",
+  "failure_category": "NUMERICAL_MISMATCH",
+  "failure_excerpt": "F =================================== FAILURES =================================== ______________________ test_forward_parity[dtype0-vit_l] _______________________ tests/queue/test_fused_square_add.py:20: in test_forward_parity torch.testin"
+}

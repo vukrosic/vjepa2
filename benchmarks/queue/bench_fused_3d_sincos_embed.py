@@ -2,7 +2,7 @@
 import json, sys, pathlib, torch
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from src.models.utils.kernels.fused_3d_sincos_embed import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_3d_sincos_embed import can_use_kernel, kernel_fn, baseline_fn, SHAPES
 
 def bench_cuda(fn, warmup=30, iters=200):
     for _ in range(warmup): fn()
@@ -15,6 +15,7 @@ def bench_cuda(fn, warmup=30, iters=200):
 
 results = {}
 for name, shape in SHAPES.items():
+    assert can_use_kernel(**shape), f"unsupported benchmark shape: {shape}"
     base_ms = bench_cuda(lambda: baseline_fn(**shape))
     kern_ms = bench_cuda(lambda: kernel_fn(**shape))
     speedup = base_ms / kern_ms

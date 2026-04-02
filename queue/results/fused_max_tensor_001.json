@@ -1,0 +1,11 @@
+{
+  "id": "fused_max_tensor_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "\n==================================== ERRORS ====================================\n____________ ERROR collecting tests/queue/test_fused_max_tensor.py _____________\nImportError while importing test module '/workspace/vjepa2/tests/queue/test_fused_max_tensor.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests/queue/test_fused_max_tensor.py:3: in <module>\n    from src.models.utils.kernels.fused_max_tensor import kernel_fn, baseline_fn, SHAPES\nE   ModuleNotFoundError: No module named 'src.models.utils.kernels.fused_max_tensor'\n=========================== short test summary info ============================\nERROR tests/queue/test_fused_max_tensor.py\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 2.65s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:36:54.099520",
+  "failure_category": "IMPORT_OR_SYNTAX_ERROR",
+  "failure_excerpt": "==================================== ERRORS ==================================== ____________ ERROR collecting tests/queue/test_fused_max_tensor.py _____________ ImportError while importing test module '/workspace/vjepa2/tests/queue/test_fu"
+}

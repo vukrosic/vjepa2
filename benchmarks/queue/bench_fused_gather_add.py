@@ -2,7 +2,7 @@
 import json, sys, pathlib, torch
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from src.models.utils.kernels.fused_gather_add import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_gather_add import can_use_kernel, kernel_fn, baseline_fn, SHAPES
 
 def bench_cuda(fn, warmup=30, iters=200):
     for _ in range(warmup): fn()
@@ -23,6 +23,7 @@ for name, shape in SHAPES.items():
     torch.manual_seed(0)
     indices = torch.randint(0, total_tokens, (B, M), device="cuda")
     accum = torch.randn(B, M, D, dtype=torch.float16, device="cuda")
+    assert can_use_kernel(x, indices, accum)
     base_ms = bench_cuda(lambda: baseline_fn(x, indices, accum))
     kern_ms = bench_cuda(lambda: kernel_fn(x, indices, accum))
     speedup = base_ms / kern_ms

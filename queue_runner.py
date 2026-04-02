@@ -39,15 +39,15 @@ def _compact_output(output, limit=240):
 
 
 def classify_result(result):
-    status = result.get("status")
+    status = result.get("status_legacy", result.get("status"))
     text = result.get("parity_output") or result.get("benchmark_output") or ""
     excerpt = _compact_output(text)
 
-    if status == "APPROVED":
+    if status in {"APPROVED", "BENCHMARK_WIN"}:
         return None, ""
-    if status == "REJECTED":
+    if status in {"REJECTED", "BENCHMARK_REGRESSION"}:
         return "BENCH_REGRESSION", excerpt
-    if status == "PARTIAL_WIN":
+    if status in {"PARTIAL_WIN", "BENCHMARK_PARTIAL_WIN"}:
         return "PARTIAL_BENCH_WIN", excerpt
 
     lower = text.lower()
@@ -67,17 +67,34 @@ def classify_result(result):
         return "BASELINE_OR_TEST_BUG", excerpt
     if "tensor-likes are not close" in lower:
         return "NUMERICAL_MISMATCH", excerpt
-    if status == "FAILED_BENCHMARK":
+    if status in {"FAILED_BENCHMARK", "BENCHMARK_ERROR"}:
         return "BENCHMARK_ERROR", excerpt
-    if status == "FAILED_PARITY":
+    if status == "FAILED_PARITY" or str(status).startswith("PARITY_"):
         return "PARITY_ERROR", excerpt
     return "UNKNOWN", excerpt
 
 
+def explicit_status(legacy_status, category):
+    if legacy_status == "FAILED_PARITY":
+        return f"PARITY_{category or 'ERROR'}"
+    if legacy_status == "FAILED_BENCHMARK":
+        return "BENCHMARK_ERROR"
+    if legacy_status == "APPROVED":
+        return "BENCHMARK_WIN"
+    if legacy_status == "PARTIAL_WIN":
+        return "BENCHMARK_PARTIAL_WIN"
+    if legacy_status == "REJECTED":
+        return "BENCHMARK_REGRESSION"
+    return legacy_status
+
+
 def finalize_result(result):
+    legacy_status = result.get("status_legacy", result.get("status"))
     category, excerpt = classify_result(result)
+    result["status_legacy"] = legacy_status
     result["failure_category"] = category
     result["failure_excerpt"] = excerpt
+    result["status"] = explicit_status(legacy_status, category)
     return result
 
 
@@ -207,8 +224,8 @@ def process_entry(entry):
     if not passed:
         result["status"] = "FAILED_PARITY"
         finalize_result(result)
-        print(f"  FAILED parity test")
-        print(f"  Category: {result['failure_category']}")
+        print(f"  Parity failed")
+        print(f"  Status: {result['status']}")
         print(f"  Output: {output[:500]}")
         save_result(entry_id, result)
         return result
@@ -223,7 +240,7 @@ def process_entry(entry):
 
     if bench_data is None:
         result["status"] = "FAILED_BENCHMARK"
-        print(f"  FAILED benchmark (no results extracted)")
+        print(f"  Benchmark failed (no results extracted)")
         print(f"  Output: {output[:500]}")
     else:
         # Check if any shape shows speedup > 1.0
@@ -244,8 +261,7 @@ def process_entry(entry):
         print(f"\n  Verdict: {result['status']}")
 
     finalize_result(result)
-    if result["failure_category"]:
-        print(f"  Category: {result['failure_category']}")
+    print(f"  Status: {result['status']}")
     save_result(entry_id, result)
     return result
 
@@ -262,23 +278,21 @@ def print_summary(results):
     print(f"QUEUE SUMMARY")
     print(f"{'='*60}")
 
-    approved = [r for r in results if r["status"] == "APPROVED"]
-    partial = [r for r in results if r["status"] == "PARTIAL_WIN"]
-    rejected = [r for r in results if r["status"] == "REJECTED"]
-    failed_parity = [r for r in results if r["status"] == "FAILED_PARITY"]
-    failed_bench = [r for r in results if r["status"] == "FAILED_BENCHMARK"]
+    normalized = []
+    for result in results:
+        legacy = result.get("status_legacy", result.get("status"))
+        category = result.get("failure_category")
+        normalized.append(explicit_status(legacy, category))
 
-    print(f"  APPROVED:       {len(approved)}")
-    print(f"  PARTIAL_WIN:    {len(partial)}")
-    print(f"  REJECTED:       {len(rejected)}")
-    print(f"  FAILED_PARITY:  {len(failed_parity)}")
-    print(f"  FAILED_BENCH:   {len(failed_bench)}")
+    status_counts = Counter(normalized)
+    for status, count in status_counts.most_common():
+        print(f"  {status}: {count}")
     print(f"  TOTAL:          {len(results)}")
 
     categories = Counter()
     for result in results:
         category = result.get("failure_category")
-        if category is None and result.get("status") != "APPROVED":
+        if category is None and result.get("status") not in {"APPROVED", "BENCHMARK_WIN"}:
             category, _ = classify_result(result)
         if category:
             categories[category] += 1
@@ -288,8 +302,9 @@ def print_summary(results):
         for category, count in categories.most_common():
             print(f"  {category}: {count}")
 
+    approved = [r for r in results if explicit_status(r.get("status_legacy", r.get("status")), r.get("failure_category")) == "BENCHMARK_WIN"]
     if approved:
-        print(f"\nApproved kernels:")
+        print(f"\nBenchmark wins:")
         for r in approved:
             best = max(r["benchmark"].values(), key=lambda v: v.get("speedup", 0))
             print(f"  {r['id']}: best {best['speedup']:.2f}x")

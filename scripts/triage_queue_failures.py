@@ -72,8 +72,23 @@ def family_from_entry(entry: dict, path: pathlib.Path) -> str:
     return str(kernel)
 
 
+def explicit_status(entry: dict, category: str) -> str:
+    legacy = str(entry.get("status_legacy", entry.get("status", "<missing>")))
+    if legacy == "FAILED_PARITY":
+        return f"PARITY_{category or 'ERROR'}"
+    if legacy == "FAILED_BENCHMARK":
+        return "BENCHMARK_ERROR"
+    if legacy == "APPROVED":
+        return "BENCHMARK_WIN"
+    if legacy == "PARTIAL_WIN":
+        return "BENCHMARK_PARTIAL_WIN"
+    if legacy == "REJECTED":
+        return "BENCHMARK_REGRESSION"
+    return legacy
+
+
 def classify(entry: dict) -> tuple[str, str]:
-    status = str(entry.get("status", "<missing>"))
+    status = str(entry.get("status_legacy", entry.get("status", "<missing>")))
     text = entry.get("parity_output") or entry.get("benchmark_output") or ""
     lower = str(text).lower()
 
@@ -127,7 +142,16 @@ def load_results(results_dir: pathlib.Path) -> list[ResultRow]:
         status = str(data.get("status", "<missing>"))
         family = family_from_entry(data, path)
         category, excerpt = classify(data)
-        rows.append(ResultRow(path=path, data=data, status=status, family=family, category=category, excerpt=excerpt))
+        rows.append(
+            ResultRow(
+                path=path,
+                data=data,
+                status=explicit_status(data, category),
+                family=family,
+                category=category,
+                excerpt=excerpt,
+            )
+        )
     return rows
 
 

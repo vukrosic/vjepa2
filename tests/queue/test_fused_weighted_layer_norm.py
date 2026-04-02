@@ -29,7 +29,7 @@ def test_backward_parity(shape_name):
     xa = torch.randn(*shape["x"], dtype=torch.float32, device="cuda", requires_grad=True)
     wa = torch.randn(shape["C"], dtype=torch.float32, device="cuda", requires_grad=True)
     ba = torch.randn(shape["C"], dtype=torch.float32, device="cuda", requires_grad=True)
-    twa = torch.rand(shape["x"][0], shape["x"][1], 1, dtype=torch.float32, device="cuda", requires_grad=True) + 0.5
+    twa = (torch.rand(shape["x"][0], shape["x"][1], 1, dtype=torch.float32, device="cuda") + 0.5).requires_grad_()
     xb = xa.detach().clone().requires_grad_(True)
     wb = wa.detach().clone().requires_grad_(True)
     bb = ba.detach().clone().requires_grad_(True)

@@ -1,4 +1,4 @@
-# How To Optimize V-JEPA 2 Without Lying To Yourself
+# How To Improve The V-JEPA 2 Baseline Without Lying To Yourself
 
 This document is the cleaned-up version of the optimization work in this repo.
 The running diary stays in [`OPTIMIZATION_NOTES.md`](/workspace/vjepa2/docs/optimization/OPTIMIZATION_NOTES.md).
@@ -11,10 +11,16 @@ The goal is simple:
 
 - make V-JEPA 2 faster,
 - do not change model behavior,
-- keep only changes that beat a real baseline.
+- keep only changes that improve a real baseline.
 
 That last point matters more than people admit. Plenty of optimization work
 produces a prettier microbenchmark and a worse real model.
+
+In this repo, "improve the baseline" includes more than raw throughput:
+
+- retain exact fast paths that beat the checked-in implementation,
+- fix correctness bugs that distort benchmark conclusions,
+- keep the queue honest so broken experiments do not pollute the result set.
 
 ## What Counts As A Real Optimization
 
@@ -76,6 +82,13 @@ questions:
 - a short full-model check tells you whether the default path actually moves.
 
 Those are not interchangeable, and the docs below try to keep them separate.
+
+One more rule from the later queue pass:
+
+- separate queue-family validation from model-level claims.
+
+A queue-family win is useful evidence, but it is still a helper-level result
+until that helper is wired into the live default path and remeasured there.
 
 ## Test Strategy
 
@@ -336,6 +349,95 @@ Why it was still rejected:
 
 So the primitive win was real, but it did not survive a real caller. That means
 it does not belong in the live path.
+
+## Queue Hardening And Exact Helper Wins
+
+Later in the work, the bottleneck was not just kernel math. It was queue
+quality. Too many experiments were failing for reasons that had nothing to do
+with optimization merit:
+
+- import and syntax errors,
+- stale tests,
+- bad Triton pointer math,
+- non-exact baselines,
+- kernels that were correct but obviously slower.
+
+The fix was to harden the queue process itself:
+
+- `pytest` and `timm` were installed locally so parity could run for real,
+- `scripts/prequeue_validate.py` was used as a gate before enqueue,
+- `scripts/enqueue_kernel.py` became the only supported way to append queue
+  work,
+- agent docs were reduced to a strict allowlist plus an explicit locked/done
+  list.
+
+That did two things:
+
+1. It reduced garbage entering the queue.
+2. It made a new class of exact source-backed helper wrappers possible.
+
+These are not full-model claims. They are scientifically narrower than that:
+exact helper-level wins with explicit parity and benchmark coverage.
+
+### Exact Queue Families Added In This Pass
+
+| queue family | best measured speedup | status |
+| --- | ---: | --- |
+| `fused_sorted_target_positions` | 31.09x | approved in queue runner |
+| `fused_repeat_interleave_batch` | 81.55x | parity checked, queued |
+| `fused_action_block_causal_attention_mask` | 24.56x | parity checked, queued |
+| `fused_rotate_query_key_pair` | 13.00x | parity checked, queued |
+| `fused_rotate_queries_or_keys` | 6.37x | parity checked, queued |
+| `fused_apply_masks_source` | 2.38x | parity checked, queued |
+
+What matters about these results is not just the speedup number. It is that the
+baseline and the optimized path are both easy to explain:
+
+- `fused_sorted_target_positions` wraps the exact predictor helper around
+  `torch.searchsorted`,
+- `fused_repeat_interleave_batch` replaces nested Python-side `cat()` with
+  reshape/expand,
+- `fused_action_block_causal_attention_mask` uses the cached source helper,
+- the RoPE helpers wrap already-proven Triton primitives,
+- `fused_apply_masks_source` exposes the real source vectorization win instead
+  of reviving the rejected Triton gather idea.
+
+### One Real End-To-End Queue Check
+
+I also ran one complete queue-runner execution on
+`fused_sorted_target_positions_001` rather than stopping at local parity tests.
+
+Measured queue-runner benchmark result:
+
+| shape | baseline | optimized | speedup |
+| --- | ---: | ---: | ---: |
+| `small` | 0.9808 ms | 0.1416 ms | 6.92x |
+| `vit_l` | 3.8082 ms | 0.1340 ms | 28.41x |
+| `vit_h` | 3.9017 ms | 0.1255 ms | 31.09x |
+
+That entry passed parity, passed benchmark, and was recorded by the queue
+runner as `BENCHMARK_WIN`.
+
+This is the strongest kind of evidence in the queue workflow because it proves
+the family survives the same machinery that later agents will use.
+
+### Negative Results Still Matter Here
+
+The queue pass also produced a few important non-results:
+
+- `fused_qkv_split` is parity-clean again, but the refreshed benchmark is
+  effectively flat at about `1.00x`, so it is a correctness cleanup, not a
+  retained throughput win.
+- `fused_3d_sincos_embed` is parity-clean and slightly positive, but only around
+  `1.03x-1.06x`; that is not a headline result.
+- scratch families such as `fused_apply_masks_multi`,
+  `fused_apply_masks_single`, and `fused_app_rope_rotate` were removed after
+  measurement because they were not real wins and only created noise for
+  simpler agents.
+
+This is why queue hygiene belongs in the optimization tutorial. Without that
+discipline, you do not get a clean set of wins and rejections. You get a pile
+of artifacts.
 
 ## Fused `q/k` RoPE Pair Kernel
 

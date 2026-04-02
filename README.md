@@ -1,3 +1,37 @@
+## Micro-Optimizations In This Fork
+
+This fork includes retained micro-optimizations to the V-JEPA 2 baseline code.
+The strongest wins are in the code around attention rather than in the dense
+attention core itself: RoPE rotation, action-conditioned attention assembly,
+predictor tensor plumbing, mask gathering, and deterministic helper
+construction.
+
+Top retained changes:
+
+| Path | Change | File | Representative gain |
+| --- | --- | --- | ---: |
+| RoPE attention | Fused Triton `q/k` rotation primitive | `src/models/utils/triton_kernels.py` | 6.24x |
+| Action-conditioned RoPE attention | Batch action-token QKV + RoPE work instead of per-token looping | `src/models/utils/modules.py` | 1.62x |
+| RoPE attention training | Keep the Triton RoPE path only after backward matched training behavior | `src/models/utils/triton_kernels.py` | 1.24x |
+| AC RoPE attention training | Same training-safe Triton path on the AC branch | `src/models/utils/triton_kernels.py` | 1.21x |
+| Predictor | Broadcast/gather cleanup on predictor token plumbing | `src/models/predictor.py` | 1.28x |
+| Mask gathering | Same-shape 1D multi-mask path uses one batched gather | `src/masks/utils.py` | 2.07x |
+| Mask gathering | Same-shape 2D multi-mask path uses one batched gather | `src/masks/utils.py` | 1.92x |
+| Tensor repeat | Replace nested Python `cat()` with reshape-expand-reshape | `src/utils/tensors.py` | 1.93x |
+| Action mask helper | Cache the action block causal mask instead of rebuilding it every call | `src/models/utils/modules.py` | 31.79x |
+
+Additional retained cleanups:
+
+- `src/models/attentive_pooler.py`: use `expand` instead of `repeat` for shared query tokens
+- `src/models/vision_transformer.py`: keep the single-mask case on the simple path
+- `src/models/utils/modules.py`: fix SDPA eval dropout handling and half-precision RoPE dtype handling
+
+Short default-path end-to-end checks remain modest after the retained set:
+`encoder, unmasked 0.994x`, `encoder, masked 0.998x`, `predictor 1.002x`,
+`action-conditioned predictor 1.012x`.
+
+For the full write-up, see [`BLOG.md`](BLOG.md) and
+[`docs/optimization/OPTIMIZATION_ARTICLE.md`](docs/optimization/OPTIMIZATION_ARTICLE.md).
 
 🆕 **[2026-03-16]:** :fire: V-JEPA 2.1 is released :fire: A new familly of models trained with a novel recipe that learns high quality and temporolly consistent dense features !!!
 

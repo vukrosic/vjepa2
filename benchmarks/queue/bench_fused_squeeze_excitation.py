@@ -1,30 +1,25 @@
+"""Benchmark for fused_squeeze_excitation kernel."""
 import json, sys, pathlib, torch
-ROOT = pathlib.Path(__file__).resolve().parents[2]; sys.path.insert(0, str(ROOT))
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 from src.models.utils.kernels.fused_squeeze_excitation import kernel_fn, baseline_fn, SHAPES
 
-def bench(shape_name, dtype):
-    shape = SHAPES[shape_name]
-    x = torch.randn(*shape["x"], dtype=dtype, device="cuda")
-    se = torch.randn(*shape["se"], dtype=dtype, device="cuda")
-    warmup = 30; iters = 200
-    for _ in range(warmup): torch.cuda.synchronize(); baseline_fn(x, se)
+def bench_cuda(fn, warmup=30, iters=200):
+    for _ in range(warmup): fn()
     torch.cuda.synchronize()
-    t0 = torch.cuda.Event(enable_timing=True); t1 = torch.cuda.Event(enable_timing=True)
-    t0.record()
-    for _ in range(iters): baseline_fn(x, se)
-    t1.record(); torch.cuda.synchronize()
-    t_bas = t0.elapsed_time(t1) / iters
-    for _ in range(warmup): torch.cuda.synchronize(); kernel_fn(x, se)
-    torch.cuda.synchronize()
-    t0.record()
-    for _ in range(iters): kernel_fn(x, se)
-    t1.record(); torch.cuda.synchronize()
-    t_ker = t0.elapsed_time(t1) / iters
-    return {"shape": shape_name, "dtype": str(dtype), "baseline_ms": t_bas, "kernel_ms": t_ker}
+    s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
+    s.record()
+    for _ in range(iters): fn()
+    e.record(); torch.cuda.synchronize()
+    return s.elapsed_time(e) / iters
 
-if __name__ == "__main__":
-    results = []
-    for shape_name in SHAPES:
-        for dtype in [torch.float16, torch.float32]:
-            results.append(bench(shape_name, dtype))
-    print(f"BENCH_RESULT={json.dumps(results)}")
+results = {}
+for name, shape in SHAPES.items():
+    x = torch.randn(shape["x"], dtype=torch.float32, device="cuda")
+    se = torch.randn(shape["se"], dtype=torch.float32, device="cuda")
+    base_ms = bench_cuda(lambda: baseline_fn(x, se))
+    kern_ms = bench_cuda(lambda: kernel_fn(x, se))
+    speedup = base_ms / kern_ms
+    results[name] = {"baseline_ms": round(base_ms,4), "kernel_ms": round(kern_ms,4), "speedup": round(speedup,3)}
+    print(f"{name}: {base_ms:.4f} ms -> {kern_ms:.4f} ms ({speedup:.2f}x)")
+print(f"BENCH_RESULT={json.dumps(results)}")

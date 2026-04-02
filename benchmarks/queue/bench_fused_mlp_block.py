@@ -1,8 +1,8 @@
-"""Benchmark for fused_add_norm_residual kernel."""
+"""Benchmark for fused_mlp_block kernel."""
 import json, sys, pathlib, torch
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from src.models.utils.kernels.fused_add_norm_residual import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_mlp_block import kernel_fn, baseline_fn, SHAPES
 
 def bench_cuda(fn, warmup=30, iters=200):
     for _ in range(warmup): fn()
@@ -15,14 +15,15 @@ def bench_cuda(fn, warmup=30, iters=200):
 
 results = {}
 for name, shape in SHAPES.items():
+    x = torch.randn(*shape["x"], dtype=torch.float16, device="cuda")
+    residual = torch.randn(*shape["x"], dtype=torch.float16, device="cuda")
     D = shape["D"]
-    x = torch.randn(shape["x"], dtype=torch.float32, device="cuda")
-    b1 = torch.randn(shape["b1"], dtype=torch.float32, device="cuda")
-    b2 = torch.randn(shape["b2"], dtype=torch.float32, device="cuda")
-    weight = torch.randn(D, dtype=torch.float32, device="cuda")
-    bias = torch.randn(D, dtype=torch.float32, device="cuda")
-    base_ms = bench_cuda(lambda: baseline_fn(x, b1, b2, weight, bias))
-    kern_ms = bench_cuda(lambda: kernel_fn(x, b1, b2, weight, bias))
+    ln_weight = torch.ones(D, dtype=torch.float16, device="cuda")
+    ln_bias = torch.zeros(D, dtype=torch.float16, device="cuda")
+    proj1_weight = torch.randn(D * 4, D, dtype=torch.float16, device="cuda")
+    proj1_bias = torch.zeros(D * 4, dtype=torch.float16, device="cuda")
+    base_ms = bench_cuda(lambda: baseline_fn(x, residual, ln_weight, ln_bias, proj1_weight, proj1_bias))
+    kern_ms = bench_cuda(lambda: kernel_fn(x, residual, ln_weight, ln_bias, proj1_weight, proj1_bias))
     speedup = base_ms / kern_ms
     results[name] = {"baseline_ms": round(base_ms,4), "kernel_ms": round(kern_ms,4), "speedup": round(speedup,3)}
     print(f"{name}: {base_ms:.4f} ms -> {kern_ms:.4f} ms ({speedup:.2f}x)")

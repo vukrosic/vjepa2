@@ -19,16 +19,17 @@ def _fused_l2_dist_fwd(A, B, Y, N: tl.constexpr, D: tl.constexpr, BLOCK_D: tl.co
     pid = tl.program_id(0)
     offs_d = tl.arange(0, BLOCK_D)
     mask_d = offs_d < D
-    sq_sum = 0.0
+    sq_sum = tl.zeros((BLOCK_D,), dtype=tl.float32)
     for d in range(0, D, BLOCK_D):
-        a = tl.load(A + pid * D + offs_d, mask=mask_d, other=0.0).to(tl.float32)
-        b = tl.load(B + pid * D + offs_d, mask=mask_d, other=0.0).to(tl.float32)
-        diff = a - b
+        a_ptr = A + pid * D + offs_d + d
+        b_ptr = B + pid * D + offs_d + d
+        a_val = tl.load(a_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        b_val = tl.load(b_ptr, mask=mask_d, other=0.0).to(tl.float32)
+        diff = a_val - b_val
         sq_sum += diff * diff
-        offs_d += BLOCK_D
-        mask_d = offs_d < D
-    dist = tl.sqrt(sq_sum)
-    tl.store(Y + pid, dist)
+    
+    dist = tl.sqrt(tl.sum(sq_sum, axis=0))
+    tl.store(Y + pid, dist.to(Y.dtype.element_ty))
 
 
 def kernel_fn(a, b):

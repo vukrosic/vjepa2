@@ -1,0 +1,25 @@
+{
+  "id": "fused_percentile_scale_002",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "............                                                             [100%]\n12 passed in 6.54s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0345,
+      "kernel_ms": 0.3747,
+      "speedup": 0.092
+    },
+    "vit_h": {
+      "baseline_ms": 0.0519,
+      "kernel_ms": 0.7805,
+      "speedup": 0.067
+    },
+    "small": {
+      "baseline_ms": 0.0334,
+      "kernel_ms": 0.1439,
+      "speedup": 0.232
+    }
+  },
+  "benchmark_output": "vit_l: 0.0345 ms -> 0.3747 ms (0.09x)\nvit_h: 0.0519 ms -> 0.7805 ms (0.07x)\nsmall: 0.0334 ms -> 0.1439 ms (0.23x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0345, \"kernel_ms\": 0.3747, \"speedup\": 0.092}, \"vit_h\": {\"baseline_ms\": 0.0519, \"kernel_ms\": 0.7805, \"speedup\": 0.067}, \"small\": {\"baseline_ms\": 0.0334, \"kernel_ms\": 0.1439, \"speedup\": 0.232}}\n",
+  "timestamp": "2026-04-02T05:58:28.364664"
+}

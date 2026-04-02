@@ -1,8 +1,8 @@
-"""Benchmark for fused_l2_distance kernel."""
+"""Benchmark for fused_argsort_gather kernel."""
 import json, sys, pathlib, torch
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from src.models.utils.kernels.fused_l2_distance import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_argsort_gather import kernel_fn, baseline_fn, SHAPES
 
 def bench_cuda(fn, warmup=30, iters=200):
     for _ in range(warmup): fn()
@@ -15,10 +15,14 @@ def bench_cuda(fn, warmup=30, iters=200):
 
 results = {}
 for name, shape in SHAPES.items():
-    a = torch.randn(shape["a"], dtype=torch.float32, device="cuda")
-    b = torch.randn(shape["b"], dtype=torch.float32, device="cuda")
-    base_ms = bench_cuda(lambda: baseline_fn(a, b))
-    kern_ms = bench_cuda(lambda: kernel_fn(a, b))
+    B, N, total_D = shape["x"]
+    x = torch.randn(B, N, total_D, dtype=torch.float16, device="cuda")
+    masks = torch.rand(B, N, device="cuda")
+    argsort = torch.argsort(masks, dim=1)
+    base_fn = lambda: baseline_fn(x, argsort)
+    kern_fn = lambda: kernel_fn(x, argsort)
+    base_ms = bench_cuda(base_fn)
+    kern_ms = bench_cuda(kern_fn)
     speedup = base_ms / kern_ms
     results[name] = {"baseline_ms": round(base_ms,4), "kernel_ms": round(kern_ms,4), "speedup": round(speedup,3)}
     print(f"{name}: {base_ms:.4f} ms -> {kern_ms:.4f} ms ({speedup:.2f}x)")

@@ -75,7 +75,9 @@ def family_from_entry(entry: dict, path: pathlib.Path) -> str:
 def explicit_status(entry: dict, category: str) -> str:
     legacy = str(entry.get("status_legacy", entry.get("status", "<missing>")))
     if legacy == "FAILED_PARITY":
-        return f"PARITY_{category or 'ERROR'}"
+        if not category or category == "PARITY_ERROR":
+            return "PARITY_FAILURE"
+        return f"PARITY_{category}"
     if legacy == "FAILED_BENCHMARK":
         return "BENCHMARK_ERROR"
     if legacy == "APPROVED":

@@ -1,6 +1,6 @@
 """Parity test for fused_argsort_gather kernel."""
 import torch, pytest
-from src.models.utils.kernels.fused_argsort_gather import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_argsort_gather import can_use_kernel, kernel_fn, baseline_fn, SHAPES
 
 ATOL_FP16 = 5e-3
 ATOL_FP32 = 1e-5
@@ -35,3 +35,20 @@ def test_backward_parity(shape_name):
     out1.backward(grad)
     out2.backward(grad)
     torch.testing.assert_close(x2.grad, x1.grad, atol=1e-3, rtol=1e-3)
+
+
+def test_strict_fallback_on_non_contiguous():
+    shape = SHAPES["small"]
+    B, N, total_D = shape["x"]
+    x = torch.randn(B, N, total_D, dtype=torch.float32, device="cuda")
+    masks = torch.rand(B, N, device="cuda")
+    argsort = torch.argsort(masks, dim=1)
+
+    x_nc = x.transpose(1, 2).contiguous().transpose(1, 2)
+    assert not can_use_kernel(x_nc, argsort)
+    torch.testing.assert_close(
+        kernel_fn(x_nc, argsort),
+        baseline_fn(x_nc, argsort),
+        atol=0.0,
+        rtol=0,
+    )

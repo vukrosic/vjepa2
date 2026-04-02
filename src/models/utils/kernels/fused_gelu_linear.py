@@ -4,6 +4,8 @@ Pattern: out = linear(gelu(x))
 Fuses: GELU elementwise into the matmul loop, avoiding one kernel launch and one extra read of x.
 Each program computes one output element y[b,n,k] = sum_i gelu(x[b,n,i]) * W[k,i].
 """
+import math
+
 import torch
 import triton
 import triton.language as tl
@@ -17,6 +19,8 @@ def baseline_fn(x, weight, bias):
 
 
 # --- KERNEL: fused gelu elementwise (separate pass before matmul) ---
+# Uses EXACT same formula as PyTorch default: x * 0.5 * (1 + erf(x / sqrt(2)))
+# NOT the tanh approximation which causes numerical mismatches.
 @triton.jit
 def _fused_gelu_fwd(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
@@ -25,9 +29,8 @@ def _fused_gelu_fwd(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
         idx = pid * BLOCK + i
         if idx < N:
             x = tl.load(X + idx).to(tl.float32)
-            # GELU approx: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
-            cdf = 0.5 * (1.0 + libdevice.tanh(0.7978845608 * (x + 0.044715 * x * x * x)))
-            y = x * cdf
+            # GELU exact (erf-based): matches PyTorch's default F.gelu
+            y = 0.5 * x * (1.0 + libdevice.erf(x * 0.7071067811865476))  # 1/sqrt(2)
             tl.store(Y + idx, y)
 
 
@@ -40,11 +43,14 @@ def _fused_gelu_bwd(X, DY, DX, N: tl.constexpr, BLOCK: tl.constexpr):
         if idx < N:
             x = tl.load(X + idx).to(tl.float32)
             dy = tl.load(DY + idx).to(tl.float32)
-            cdf = 0.5 * (1.0 + libdevice.tanh(0.7978845608 * (x + 0.044715 * x * x * x)))
-            # dGELU/dx = cdf + x * cdf' where cdf' = 0.5 * sech^2 * 0.7978845608 * (1 + 3*0.044715*x^2)
-            z = 0.7978845608 * (x + 0.044715 * x * x * x)
-            sech2 = 1.0 / (libdevice.cosh(z) * libdevice.cosh(z))
-            dgelu_dx = cdf + x * 0.7978845608 * sech2 * (1.0 + 3.0 * 0.044715 * x * x)
+            # dGELU/dx = 0.5 * (1 + erf(x/sqrt(2))) + x * (2/sqrt(pi)) * exp(-x^2/2)
+            # Simplified: dGELU/dx = 0.5 * (1 + erf(x*ISQRT2)) + (x*ISQRT2) * exp(-x^2/2) * ISQRT2
+            # where ISQRT2 = 1/sqrt(2), ISQRTPI = 1/sqrt(pi)
+            # More directly: dGELU = cdf + pdf = 0.5*(1+erf(z)) + (1/sqrt(2*pi))*exp(-z^2) where z=x/sqrt(2)
+            z = x * 0.7071067811865476  # x / sqrt(2)
+            # pdf = (1/sqrt(2*pi)) * exp(-z^2)
+            pdf = 0.3989422804014327 * libdevice.exp(-z * z)  # 1/sqrt(2*pi) * exp(-z^2)
+            dgelu_dx = 0.5 * (1.0 + libdevice.erf(z)) + x * pdf * 0.7071067811865476
             dx = dy * dgelu_dx
             tl.store(DX + idx, dx)
 

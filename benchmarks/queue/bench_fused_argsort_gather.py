@@ -19,6 +19,7 @@ for name, shape in SHAPES.items():
     x = torch.randn(B, N, total_D, dtype=torch.float16, device="cuda")
     masks = torch.rand(B, N, device="cuda")
     argsort = torch.argsort(masks, dim=1)
+    assert x.is_contiguous()
     base_fn = lambda: baseline_fn(x, argsort)
     kern_fn = lambda: kernel_fn(x, argsort)
     base_ms = bench_cuda(base_fn)

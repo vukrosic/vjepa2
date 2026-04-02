@@ -20,7 +20,7 @@ for name, shape in SHAPES.items():
     momentum = 0.996
     temperature = 0.07
     base_ms = bench_cuda(lambda: baseline_fn(teacher.clone(), student, momentum, temperature))
-    kern_ms = bench_cuda(lambda: kernel_fn(teacher, student, momentum, temperature))
+    kern_ms = bench_cuda(lambda: kernel_fn(teacher.clone(), student, momentum, temperature))
     speedup = base_ms / kern_ms
     results[name] = {"baseline_ms": round(base_ms,4), "kernel_ms": round(kern_ms,4), "speedup": round(speedup,3)}
     print(f"{name}: {base_ms:.4f} ms -> {kern_ms:.4f} ms ({speedup:.2f}x)")

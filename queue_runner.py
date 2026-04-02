@@ -76,7 +76,9 @@ def classify_result(result):
 
 def explicit_status(legacy_status, category):
     if legacy_status == "FAILED_PARITY":
-        return f"PARITY_{category or 'ERROR'}"
+        if not category or category == "PARITY_ERROR":
+            return "PARITY_FAILURE"
+        return f"PARITY_{category}"
     if legacy_status == "FAILED_BENCHMARK":
         return "BENCHMARK_ERROR"
     if legacy_status == "APPROVED":

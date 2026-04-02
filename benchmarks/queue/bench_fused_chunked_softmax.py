@@ -7,7 +7,7 @@ import torch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from src.models.utils.kernels.fused_chunked_softmax import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_chunked_softmax import can_use_kernel, kernel_fn, baseline_fn, SHAPES
 
 
 def bench_cuda(fn, warmup=30, iters=200):
@@ -28,6 +28,7 @@ results = {}
 for name, shape in SHAPES.items():
     x = torch.randn(*shape["x"], dtype=torch.float16, device="cuda")
     chunk_size = shape["chunk_size"]
+    assert can_use_kernel(x, chunk_size)
     base_ms = bench_cuda(lambda: baseline_fn(x, chunk_size))
     kern_ms = bench_cuda(lambda: kernel_fn(x, chunk_size))
     speedup = base_ms / kern_ms

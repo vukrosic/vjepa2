@@ -1,0 +1,27 @@
+{
+  "id": "fused_selu_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.09s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0506,
+      "kernel_ms": 0.1295,
+      "speedup": 0.391
+    },
+    "vit_h": {
+      "baseline_ms": 0.1203,
+      "kernel_ms": 0.1291,
+      "speedup": 0.932
+    },
+    "small": {
+      "baseline_ms": 0.0307,
+      "kernel_ms": 0.1405,
+      "speedup": 0.218
+    }
+  },
+  "benchmark_output": "vit_l: 0.0506 ms -> 0.1295 ms (0.39x)\nvit_h: 0.1203 ms -> 0.1291 ms (0.93x)\nsmall: 0.0307 ms -> 0.1405 ms (0.22x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0506, \"kernel_ms\": 0.1295, \"speedup\": 0.391}, \"vit_h\": {\"baseline_ms\": 0.1203, \"kernel_ms\": 0.1291, \"speedup\": 0.932}, \"small\": {\"baseline_ms\": 0.0307, \"kernel_ms\": 0.1405, \"speedup\": 0.218}}\n",
+  "timestamp": "2026-04-02T08:28:57.858808",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 7.09s"
+}

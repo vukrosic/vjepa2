@@ -1,0 +1,27 @@
+{
+  "id": "fused_hardsigmoid_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "............                                                             [100%]\n12 passed in 7.92s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.08,
+      "kernel_ms": 0.1282,
+      "speedup": 0.624
+    },
+    "vit_h": {
+      "baseline_ms": 0.1959,
+      "kernel_ms": 0.1959,
+      "speedup": 1.0
+    },
+    "small": {
+      "baseline_ms": 0.0321,
+      "kernel_ms": 0.157,
+      "speedup": 0.204
+    }
+  },
+  "benchmark_output": "vit_l: 0.0800 ms -> 0.1282 ms (0.62x)\nvit_h: 0.1959 ms -> 0.1959 ms (1.00x)\nsmall: 0.0321 ms -> 0.1570 ms (0.20x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.08, \"kernel_ms\": 0.1282, \"speedup\": 0.624}, \"vit_h\": {\"baseline_ms\": 0.1959, \"kernel_ms\": 0.1959, \"speedup\": 1.0}, \"small\": {\"baseline_ms\": 0.0321, \"kernel_ms\": 0.157, \"speedup\": 0.204}}\n",
+  "timestamp": "2026-04-02T08:28:04.961329",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "............ [100%] 12 passed in 7.92s"
+}

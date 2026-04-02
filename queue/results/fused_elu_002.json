@@ -1,0 +1,27 @@
+{
+  "id": "fused_elu_002",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 6.98s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0422,
+      "kernel_ms": 0.1434,
+      "speedup": 0.294
+    },
+    "vit_h": {
+      "baseline_ms": 0.1002,
+      "kernel_ms": 0.1424,
+      "speedup": 0.704
+    },
+    "small": {
+      "baseline_ms": 0.0374,
+      "kernel_ms": 0.1439,
+      "speedup": 0.26
+    }
+  },
+  "benchmark_output": "vit_l: 0.0422 ms -> 0.1434 ms (0.29x)\nvit_h: 0.1002 ms -> 0.1424 ms (0.70x)\nsmall: 0.0374 ms -> 0.1439 ms (0.26x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0422, \"kernel_ms\": 0.1434, \"speedup\": 0.294}, \"vit_h\": {\"baseline_ms\": 0.1002, \"kernel_ms\": 0.1424, \"speedup\": 0.704}, \"small\": {\"baseline_ms\": 0.0374, \"kernel_ms\": 0.1439, \"speedup\": 0.26}}\n",
+  "timestamp": "2026-04-02T08:30:31.407506",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 6.98s"
+}

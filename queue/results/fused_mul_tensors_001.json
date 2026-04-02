@@ -1,0 +1,27 @@
+{
+  "id": "fused_mul_tensors_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.16s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0613,
+      "kernel_ms": 0.142,
+      "speedup": 0.432
+    },
+    "vit_h": {
+      "baseline_ms": 0.1476,
+      "kernel_ms": 0.1711,
+      "speedup": 0.862
+    },
+    "small": {
+      "baseline_ms": 0.0305,
+      "kernel_ms": 0.1423,
+      "speedup": 0.214
+    }
+  },
+  "benchmark_output": "vit_l: 0.0613 ms -> 0.1420 ms (0.43x)\nvit_h: 0.1476 ms -> 0.1711 ms (0.86x)\nsmall: 0.0305 ms -> 0.1423 ms (0.21x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0613, \"kernel_ms\": 0.142, \"speedup\": 0.432}, \"vit_h\": {\"baseline_ms\": 0.1476, \"kernel_ms\": 0.1711, \"speedup\": 0.862}, \"small\": {\"baseline_ms\": 0.0305, \"kernel_ms\": 0.1423, \"speedup\": 0.214}}\n",
+  "timestamp": "2026-04-02T08:27:26.972943",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 7.16s"
+}

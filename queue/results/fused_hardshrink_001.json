@@ -1,0 +1,11 @@
+{
+  "id": "fused_hardshrink_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_hardshrink.py:17: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 2101 / 8388608 (0.0%)\nE   Greatest absolute difference: 0.5 at index (0, 0, 445) (up to 0.005 allowed)\nE   Greatest relative difference: inf at index (0, 0, 445) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_hardshrink.py::test_forward_parity[dtype0-vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.03s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:29:31.577262",
+  "failure_category": "NUMERICAL_MISMATCH",
+  "failure_excerpt": "F =================================== FAILURES =================================== ______________________ test_forward_parity[dtype0-vit_l] _______________________ tests/queue/test_fused_hardshrink.py:17: in test_forward_parity torch.testin"
+}

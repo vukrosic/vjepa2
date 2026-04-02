@@ -3,7 +3,7 @@ import torch
 import pytest
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-from src.models.utils.kernels.fused_rms_residual import kernel_fn, baseline_fn, SHAPES
+from src.models.utils.kernels.fused_rms_residual import can_use_kernel, kernel_fn, baseline_fn, SHAPES
 
 ATOL_FP16 = 1e-2
 ATOL_FP32 = 1e-4
@@ -42,3 +42,21 @@ def test_backward_parity(shape_name):
     torch.testing.assert_close(xb.grad, xa.grad, atol=1e-3, rtol=1e-3)
     torch.testing.assert_close(rb.grad, ra.grad, atol=1e-3, rtol=1e-3)
     torch.testing.assert_close(wb.grad, wa.grad, atol=1e-3, rtol=1e-3)
+
+
+def test_strict_fallback_on_non_contiguous():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available")
+    shape = SHAPES["small"]
+    x = torch.randn(*shape["x"], device="cuda")
+    residual = torch.randn(*shape["x"], device="cuda")
+    weight = torch.randn(shape["C"], device="cuda")
+
+    x_nc = x.transpose(1, 2).contiguous().transpose(1, 2)
+    assert not can_use_kernel(x_nc, residual, weight)
+    torch.testing.assert_close(
+        kernel_fn(x_nc, residual, weight),
+        baseline_fn(x_nc, residual, weight),
+        atol=0.0,
+        rtol=0,
+    )

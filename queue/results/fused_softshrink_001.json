@@ -1,0 +1,27 @@
+{
+  "id": "fused_softshrink_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 6.81s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0512,
+      "kernel_ms": 0.1252,
+      "speedup": 0.409
+    },
+    "vit_h": {
+      "baseline_ms": 0.119,
+      "kernel_ms": 0.1239,
+      "speedup": 0.96
+    },
+    "small": {
+      "baseline_ms": 0.0324,
+      "kernel_ms": 0.1251,
+      "speedup": 0.259
+    }
+  },
+  "benchmark_output": "vit_l: 0.0512 ms -> 0.1252 ms (0.41x)\nvit_h: 0.1190 ms -> 0.1239 ms (0.96x)\nsmall: 0.0324 ms -> 0.1251 ms (0.26x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0512, \"kernel_ms\": 0.1252, \"speedup\": 0.409}, \"vit_h\": {\"baseline_ms\": 0.119, \"kernel_ms\": 0.1239, \"speedup\": 0.96}, \"small\": {\"baseline_ms\": 0.0324, \"kernel_ms\": 0.1251, \"speedup\": 0.259}}\n",
+  "timestamp": "2026-04-02T08:29:38.211611",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 6.81s"
+}

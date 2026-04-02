@@ -1,0 +1,11 @@
+{
+  "id": "fused_gating_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_gating.py:18: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 16433359 / 16777216 (98.0%)\nE   Greatest absolute difference: 12.265625 at index (1, 540, 1048) (up to 0.005 allowed)\nE   Greatest relative difference: inf at index (0, 5, 932) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_gating.py::test_forward_parity[dtype0-vit_l] - ...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 6.14s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:27:57.262136",
+  "failure_category": "NUMERICAL_MISMATCH",
+  "failure_excerpt": "F =================================== FAILURES =================================== ______________________ test_forward_parity[dtype0-vit_l] _______________________ tests/queue/test_fused_gating.py:18: in test_forward_parity torch.testing.as"
+}

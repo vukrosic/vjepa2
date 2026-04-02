@@ -1,0 +1,25 @@
+{
+  "id": "fused_chunked_attention_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 3.29s\n",
+  "benchmark": {
+    "vit_l_short": {
+      "baseline_ms": 0.0862,
+      "kernel_ms": 0.0863,
+      "speedup": 0.999
+    },
+    "vit_l_med": {
+      "baseline_ms": 0.3077,
+      "kernel_ms": 0.2982,
+      "speedup": 1.032
+    },
+    "vit_h_med": {
+      "baseline_ms": 0.4304,
+      "kernel_ms": 0.4256,
+      "speedup": 1.011
+    }
+  },
+  "benchmark_output": "vit_l_short: 0.0862 ms -> 0.0863 ms (1.00x)\nvit_l_med: 0.3077 ms -> 0.2982 ms (1.03x)\nvit_h_med: 0.4304 ms -> 0.4256 ms (1.01x)\nBENCH_RESULT={\"vit_l_short\": {\"baseline_ms\": 0.0862, \"kernel_ms\": 0.0863, \"speedup\": 0.999}, \"vit_l_med\": {\"baseline_ms\": 0.3077, \"kernel_ms\": 0.2982, \"speedup\": 1.032}, \"vit_h_med\": {\"baseline_ms\": 0.4304, \"kernel_ms\": 0.4256, \"speedup\": 1.011}}\n",
+  "timestamp": "2026-04-02T06:00:02.356088"
+}

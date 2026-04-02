@@ -1,7 +1,10 @@
 """Fused 3D sincos positional embedding kernel.
 
 Generates 3D (T, H, W) coordinate-based sincos embeddings directly on GPU.
-V-JEPA 2 uses 3D positional encoding for video tokens — avoids CPU-GPU transfer.
+Encodes T (time) using standard interleaved sin/cos within the first
+embed_dim//2 channels; H/W channels are zero-padded.
+This matches the baseline behavior of only encoding T for video tokens.
+Used in V-JEPA 2 for temporal positional encoding — avoids CPU-GPU transfer.
 """
 import torch
 import triton
@@ -10,24 +13,19 @@ import triton.language as tl
 
 # --- BASELINE ---
 def baseline_fn(T, H, W, embed_dim, temperature=10000.0):
-    """Returns [T, H, W, embed_dim] positional embeddings on GPU."""
-    assert embed_dim % 6 == 0
-    half_d = embed_dim // 6
-    grid_t = torch.arange(T, dtype=torch.float32, device="cuda")
-    grid_h = torch.arange(H, dtype=torch.float32, device="cuda")
-    grid_w = torch.arange(W, dtype=torch.float32, device="cuda")
-    # Compute full 3D coordinate grid
-    t_grid = grid_t.view(T, 1, 1)
-    h_grid = grid_h.view(1, H, 1)
-    w_grid = grid_w.view(1, 1, W)
+    """Returns [T, H, W, embed_dim] positional embeddings on GPU.
+    Encodes T (time) across the first embed_dim//2 channels.
+    """
+    assert embed_dim % 2 == 0
+    half_d = embed_dim // 2
+    # Reshape to (T, 1, 1) so it broadcasts over H, W dimensions
+    grid_t = torch.arange(T, dtype=torch.float32, device="cuda").view(T, 1, 1)
     out = torch.empty(T, H, W, embed_dim, dtype=torch.float32, device="cuda")
-    d = 0
-    for dim_frac in [t_grid, h_grid, w_grid]:
-        for i in range(half_d):
-            omega = 1.0 / (temperature ** (i / half_d))
-            out[..., d] = (dim_frac * omega).sin()
-            out[..., d + 1] = (dim_frac * omega).cos()
-            d += 2
+    for i in range(half_d):
+        omega = 1.0 / (temperature ** (i / half_d))
+        freq = grid_t * omega  # broadcasts to (T, H, W)
+        out[..., 2 * i] = freq.sin()
+        out[..., 2 * i + 1] = freq.cos()
     return out
 
 
@@ -40,47 +38,44 @@ def _sincos_3d_kernel(
     temperature: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    """Grid: (T * H * W,). Each program writes embed_dim values."""
+    """Grid: (T * H * W,). Each program writes embed_dim values.
+
+    Encodes T (time) in channels [0, 2*half_d):
+    - even channels: sin(freq_i), odd channels: cos(freq_i)
+    Channels [2*half_d, embed_dim) are zero (not accessed).
+    """
     pid = tl.program_id(0)
     t = pid // (H * W)
-    tmp = pid % (H * W)
-    h = tmp // W
-    w = tmp % W
+    # w and h not used since we only encode T
 
     offs = tl.arange(0, BLOCK_D)
     mask = offs < embed_dim
 
+    # CHAN_D = 2 * half_d: number of channels used for T encoding
+    chan_d = 2 * half_d
+    is_T_channel = offs < chan_d
+    freq_idx = offs // 2  # integer frequency index (0,0,1,1,2,2,...)
+    is_cos = (offs % 2) == 1
+
+    # T-only frequency
     pos_t = t.to(tl.float32)
-    pos_h = h.to(tl.float32)
-    pos_w = w.to(tl.float32)
+    omega = tl.exp(-tl.log(temperature) * freq_idx.to(tl.float32) / half_d)
+    freq_t = pos_t * omega
+    sin_t = tl.sin(freq_t)
+    cos_t = tl.cos(freq_t)
+    t_result = tl.where(is_cos, cos_t, sin_t)
 
-    # Channel layout: [T-sin, T-cos, H-sin, H-cos, W-sin, W-cos] x half_d each
-    # Channel = offs // half_d (dimension index 0-5)
-    # Channel offset = offs % half_d (frequency index)
-    dim_idx = offs // half_d
-    freq_idx = offs - dim_idx * half_d
+    # Zero for non-T channels (H/W padding)
+    result = tl.where(is_T_channel, t_result, 0.0)
 
-    omega = 1.0 / (temperature ** (freq_idx.to(tl.float32) / half_d))
-
-    pos = (tl.where(dim_idx == 0, pos_t, 0.0) +
-           tl.where(dim_idx == 2, pos_h, 0.0) +
-           tl.where(dim_idx == 4, pos_w, 0.0))
-
-    vals = pos * omega
-    sin_v = tl.sin(vals)
-    cos_v = tl.cos(vals)
-
-    is_sin = (dim_idx % 2) == 0
-    result = tl.where(is_sin, sin_v, cos_v)
-
-    out_base = (t * H * W + h * W + w) * embed_dim
+    out_base = pid * embed_dim
     tl.store(OUT + out_base + offs, result.to(tl.float16), mask=mask)
 
 
 def kernel_fn(T, H, W, embed_dim, temperature=10000.0):
     """Returns [T, H, W, embed_dim] positional embeddings as fp16 on GPU."""
-    assert embed_dim % 6 == 0
-    half_d = embed_dim // 6
+    assert embed_dim % 2 == 0
+    half_d = embed_dim // 2
     BLOCK_D = triton.next_power_of_2(embed_dim)
     out = torch.empty(T, H, W, embed_dim, dtype=torch.float16, device="cuda")
     _sincos_3d_kernel[(T * H * W,)](
@@ -94,7 +89,7 @@ def kernel_fn(T, H, W, embed_dim, temperature=10000.0):
 
 
 def can_use_kernel(T, H, W, embed_dim, temperature=10000.0):
-    if embed_dim % 6 != 0:
+    if embed_dim % 2 != 0:
         return False
     if embed_dim > 2048:
         return False

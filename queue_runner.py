@@ -63,11 +63,19 @@ def run_parity_test(test_file):
     if not test_path.exists():
         return False, f"Test file not found: {test_file}"
 
+    # Clear Triton JIT cache so latest source changes are compiled
+    subprocess.run(["rm", "-rf", str(ROOT / ".triton")], capture_output=True)
+    triton_cache = pathlib.Path.home() / ".triton" / "cache"
+    subprocess.run(["rm", "-rf", str(triton_cache)], capture_output=True)
+
+    env = dict(os.environ)
+    env["TRITON_CACHE_DIR"] = ""
     result = subprocess.run(
         [sys.executable, "-m", "pytest", str(test_path), "-x", "-q", "--tb=short", "--no-header"],
         capture_output=True,
         text=True,
         cwd=str(ROOT),
+        env=env,
         timeout=120,
     )
     output = result.stdout + result.stderr

@@ -1,65 +1,95 @@
-"""Fused momentum teacher update kernel.
-
-Pattern: teacher = momentum * teacher + (1-momentum) * softmax(student / T)
-Fuses: softmax + EMA update in one pass, avoiding materialization of softmax output.
-"""
+"""Fused momentum teacher update kernel."""
 import torch
 import triton
 import triton.language as tl
 
 
-# --- BASELINE (exact copy) ---
 def baseline_fn(teacher, student, momentum, temperature=1.0):
     sharpened = torch.nn.functional.softmax(student / temperature, dim=-1)
     teacher.mul_(momentum).add_(sharpened, alpha=1.0 - momentum)
     return teacher
 
 
-# --- KERNEL ---
 @triton.jit
-def _fused_momentum_teacher_fwd(TEACHER, STUDENT, Y, B: tl.constexpr, N: tl.constexpr, C: tl.constexpr, MOMENTUM: tl.constexpr, TEMP: tl.constexpr, BLOCK_C: tl.constexpr):
+def _fwd(TEACHER, STUDENT, Y, B: tl.constexpr, N: tl.constexpr, C: tl.constexpr,
+         MOMENTUM: tl.constexpr, TEMP: tl.constexpr):
     pid_b = tl.program_id(0)
     pid_n = tl.program_id(1)
-    offs_c = tl.arange(0, BLOCK_C)
-    mask_c = offs_c < C
-
-    # Phase 1: find max of student row
     row_base = pid_b * N * C + pid_n * C
-    max_val = -1e9
-    for c in range(C):
-        s = tl.load(STUDENT + row_base + c, mask=mask_c, other=0.0).to(tl.float32)
-        max_val = tl.max(max_val, s / TEMP)
-        mask_c = (offs_c + c + 1) < C
-    mask_c = offs_c < C
 
-    # Phase 2: compute exp and sum
-    exp_sum = 0.0
+    # Online max using scalar loads
+    m_val = -1e9
     for c in range(C):
-        s = tl.load(STUDENT + row_base + c, mask=mask_c, other=0.0).to(tl.float32)
-        exp_val = tl.exp(s / TEMP - max_val)
-        exp_sum += exp_val
-        mask_c = (offs_c + c + 1) < C
-    mask_c = offs_c < C
+        s = tl.load(STUDENT + row_base + c).to(tl.float32)
+        m_val = tl.where(m_val > s / TEMP, m_val, s / TEMP)
 
-    # Phase 3: write output: teacher = momentum * teacher + (1-momentum) * softmax
+    # Online exp-sum using scalar loads
+    e_sum = 0.0
     for c in range(C):
-        s = tl.load(STUDENT + row_base + c, mask=mask_c, other=0.0).to(tl.float32)
-        t = tl.load(TEACHER + row_base + c, mask=mask_c, other=0.0).to(tl.float32)
-        softmax_val = tl.exp(s / TEMP - max_val) / exp_sum
-        out = MOMENTUM * t + (1.0 - MOMENTUM) * softmax_val
-        tl.store(Y + row_base + c, out, mask=mask_c)
-        mask_c = (offs_c + c + 1) < C
+        s = tl.load(STUDENT + row_base + c).to(tl.float32)
+        e_sum += tl.exp(s / TEMP - m_val)
+
+    # Write output using scalar loads + stores
+    for c in range(C):
+        s = tl.load(STUDENT + row_base + c).to(tl.float32)
+        t = tl.load(TEACHER + row_base + c).to(tl.float32)
+        p = tl.exp(s / TEMP - m_val) / e_sum
+        out = MOMENTUM * t + (1.0 - MOMENTUM) * p
+        tl.store(Y + row_base + c, out)
+
+
+@triton.jit
+def _bwd(TEACHER, STUDENT, DY, DX_T, DX_S, B: tl.constexpr, N: tl.constexpr,
+         C: tl.constexpr, MOMENTUM: tl.constexpr, TEMP: tl.constexpr):
+    pid_b = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    row_base = pid_b * N * C + pid_n * C
+
+    # Recompute softmax probabilities
+    m_val = -1e9
+    for c in range(C):
+        s = tl.load(STUDENT + row_base + c).to(tl.float32)
+        m_val = tl.where(m_val > s / TEMP, m_val, s / TEMP)
+    e_sum = 0.0
+    for c in range(C):
+        s = tl.load(STUDENT + row_base + c).to(tl.float32)
+        e_sum += tl.exp(s / TEMP - m_val)
+
+    for c in range(C):
+        s = tl.load(STUDENT + row_base + c).to(tl.float32)
+        dy = tl.load(DY + row_base + c).to(tl.float32)
+        p = tl.exp(s / TEMP - m_val) / e_sum
+        dt = MOMENTUM * dy
+        ds = (1.0 - MOMENTUM) * dy * p * (1.0 - p) / TEMP
+        tl.store(DX_T + row_base + c, dt)
+        tl.store(DX_S + row_base + c, ds)
+
+
+class FusedMomentumTeacher(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, teacher, student, momentum, temperature=1.0):
+        assert teacher.is_contiguous() and student.is_contiguous()
+        assert teacher.shape == student.shape
+        B, N, C = teacher.shape
+        y = torch.empty_like(teacher)
+        _fwd[(B, N)](teacher, student, y, B, N, C, momentum, temperature, num_warps=4)
+        ctx.save_for_backward(teacher, student)
+        ctx.momentum = momentum; ctx.temperature = temperature
+        ctx.B = B; ctx.N = N; ctx.C = C
+        return y
+
+    @staticmethod
+    def backward(ctx, dy):
+        teacher, student = ctx.saved_tensors
+        B, N, C = ctx.B, ctx.N, ctx.C
+        dx_t = torch.empty_like(teacher)
+        dx_s = torch.empty_like(student)
+        _bwd[(B, N)](teacher, student, dy, dx_t, dx_s, B, N, C, ctx.momentum, ctx.temperature, num_warps=4)
+        return dx_t, dx_s, None, None
 
 
 def kernel_fn(teacher, student, momentum, temperature=1.0):
-    assert teacher.is_contiguous() and student.is_contiguous()
-    assert teacher.shape == student.shape
-    B, N, C = teacher.shape
-    y = torch.empty_like(teacher)
-    BLOCK_C = triton.next_power_of_2(C)
-    grid = (B, N)
-    _fused_momentum_teacher_fwd[grid](teacher, student, y, B, N, C, momentum, temperature, BLOCK_C=BLOCK_C, num_warps=4)
-    return y
+    return FusedMomentumTeacher.apply(teacher, student, momentum, temperature)
 
 
 def can_use_kernel(teacher, student, momentum, temperature):

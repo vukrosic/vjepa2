@@ -1,0 +1,25 @@
+{
+  "id": "fused_temporal_pool_004",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "......                                                                   [100%]\n6 passed in 4.95s\n",
+  "benchmark": {
+    "vit_l_16f_2x": {
+      "baseline_ms": 0.0807,
+      "kernel_ms": 0.1438,
+      "speedup": 0.561
+    },
+    "vit_l_8f_2x": {
+      "baseline_ms": 0.0838,
+      "kernel_ms": 0.1319,
+      "speedup": 0.635
+    },
+    "vit_l_16f_4x": {
+      "baseline_ms": 0.0779,
+      "kernel_ms": 0.1308,
+      "speedup": 0.596
+    }
+  },
+  "benchmark_output": "vit_l_16f_2x: 0.0807 ms -> 0.1438 ms (0.56x)\nvit_l_8f_2x: 0.0838 ms -> 0.1319 ms (0.63x)\nvit_l_16f_4x: 0.0779 ms -> 0.1308 ms (0.60x)\nBENCH_RESULT={\"vit_l_16f_2x\": {\"baseline_ms\": 0.0807, \"kernel_ms\": 0.1438, \"speedup\": 0.561}, \"vit_l_8f_2x\": {\"baseline_ms\": 0.0838, \"kernel_ms\": 0.1319, \"speedup\": 0.635}, \"vit_l_16f_4x\": {\"baseline_ms\": 0.0779, \"kernel_ms\": 0.1308, \"speedup\": 0.596}}\n",
+  "timestamp": "2026-04-02T06:28:22.609491"
+}

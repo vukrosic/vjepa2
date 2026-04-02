@@ -19,7 +19,7 @@ results = {}
 for name, shape in SHAPES.items():
     x = torch.randn(*shape["x"], dtype=torch.float16, device="cuda")
     B, M, D = shape["x"]
-    total_tokens = shape["total_tokens"]
+    total_tokens = shape["x"][1]
     torch.manual_seed(0)
     indices = torch.randint(0, total_tokens, (B, M), device="cuda")
     accum = torch.randn(B, M, D, dtype=torch.float16, device="cuda")

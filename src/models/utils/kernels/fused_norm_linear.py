@@ -19,11 +19,9 @@ def baseline_fn(x, weight, bias, ln_weight, ln_bias, eps=1e-5):
 class FusedNormLinear(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, weight, bias, ln_weight, ln_bias, eps=1e-5):
-        # Allocate output buffer — norm written here, then read by linear
-        x_norm = torch.empty_like(x)
-        # cuDNN LayerNorm: writes normalized result to x_norm buffer
-        torch.nn.functional.layer_norm(
-            x, (x.shape[-1],), ln_weight, ln_bias, eps, out=x_norm
+        # cuDNN LayerNorm
+        x_norm = torch.nn.functional.layer_norm(
+            x, (x.shape[-1],), ln_weight, ln_bias, eps
         )
         # Linear reads from x_norm buffer (already in L2 cache)
         out = F.linear(x_norm, weight, bias)

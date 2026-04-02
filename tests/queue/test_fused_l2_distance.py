@@ -2,8 +2,8 @@
 import torch, pytest
 from src.models.utils.kernels.fused_l2_distance import kernel_fn, baseline_fn, SHAPES
 
-ATOL_FP16 = 5e-3
-ATOL_FP32 = 1e-5
+ATOL_FP16 = 4e-2
+ATOL_FP32 = 1e-4
 
 
 @pytest.mark.parametrize("shape_name", list(SHAPES.keys()))

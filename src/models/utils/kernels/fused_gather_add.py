@@ -30,7 +30,7 @@ class FusedGatherAdd(torch.autograd.Function):
         gathered = torch.empty(B * M, D, dtype=x.dtype, device=x.device)
 
         @triton.jit
-        def _gather_kernel(X, IDX, OUT, B, M, D, BLOCK_D):
+        def _gather_kernel(X, IDX, OUT, B: tl.constexpr, M: tl.constexpr, D: tl.constexpr, BLOCK_D: tl.constexpr):
             pid = tl.program_id(0)
             b = pid // M
             m = pid % M
@@ -62,7 +62,7 @@ class FusedGatherAdd(torch.autograd.Function):
         grad_x = torch.zeros_like(x)
 
         @triton.jit
-        def _gather_add_bwd(G, IDX, GX, B, M, D, BLOCK_D):
+        def _gather_add_bwd(G, IDX, GX, B: tl.constexpr, M: tl.constexpr, D: tl.constexpr, BLOCK_D: tl.constexpr):
             pid = tl.program_id(0)
             b = pid // M
             m = pid % M

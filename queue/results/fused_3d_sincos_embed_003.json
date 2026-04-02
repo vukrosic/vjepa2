@@ -1,0 +1,9 @@
+{
+  "id": "fused_3d_sincos_embed_003",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n________________________ test_forward_parity[vit_l_16f] ________________________\ntests/queue/test_fused_3d_sincos_embed.py:11: in test_forward_parity\n    expected = baseline_fn(**shape)\n               ^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_3d_sincos_embed.py:30: in baseline_fn\n    out[..., d] = (dim_grid * omega).sin()\n    ^^^^^^^^^^^\nE   IndexError: index 768 is out of bounds for dimension 1 with size 768\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_3d_sincos_embed.py::test_forward_parity[vit_l_16f]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 3.19s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T06:18:57.256261"
+}

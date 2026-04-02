@@ -20,11 +20,12 @@ def _fused_mish_fwd(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < N
     x = tl.load(X + offs, mask=mask).to(tl.float32)
-    # softplus = log(exp(x) + 1); use tl.abs + tl.log(1 + tl.exp(-tl.abs(x))) for stability
-    # mish: x * tanh(softplus(x))
-    sp = tl.log(tl.exp(tl.min(x, 20.0)) + 1.0)  # clamp for stability
-    t = tl.tanh(sp)
-    y = x * t
+    # softplus: log(exp(x) + 1), clamped for stability
+    sp = tl.log(tl.exp(tl.minimum(x, 20.0)) + 1.0)
+    # tanh(sp) = (exp(2*sp) - 1) / (exp(2*sp) + 1)
+    e2sp = tl.exp(tl.minimum(2.0 * sp, 40.0))
+    tanh_sp = (e2sp - 1.0) / (e2sp + 1.0)
+    y = x * tanh_sp
     tl.store(Y + offs, y, mask=mask)
 
 
@@ -35,15 +36,16 @@ def _fused_mish_bwd(X, DY, DX, N: tl.constexpr, BLOCK: tl.constexpr):
     mask = offs < N
     x = tl.load(X + offs, mask=mask).to(tl.float32)
     dy = tl.load(DY + offs, mask=mask).to(tl.float32)
-    sp = tl.log(tl.exp(tl.min(x, 20.0)) + 1.0)
-    t = tl.tanh(sp)
-    # d(tanh(sp))/dsp = 1 - tanh(sp)^2 = 1 - t^2
-    # d(softplus)/dx = sigmoid(x)
-    sig = 1.0 / (1.0 + tl.exp(tl.min(-x, 20.0)))
-    dtanh_dsp = 1.0 - t * t
+    sp = tl.log(tl.exp(tl.minimum(x, 20.0)) + 1.0)
+    e2sp = tl.exp(tl.minimum(2.0 * sp, 40.0))
+    tanh_sp = (e2sp - 1.0) / (e2sp + 1.0)
+    # sigmoid(x) for softplus gradient: 1/(1+exp(-x_clamped))
+    sig = 1.0 / (1.0 + tl.exp(tl.minimum(-x, 20.0)))
+    # dtanh/dsp = 1 - tanh^2
+    dtanh_dsp = 1.0 - tanh_sp * tanh_sp
     dsp_dx = sig
-    # d(out)/dx = tanh(sp) + x * dtanh_dsp * dsp_dx = t + x * (1 - t^2) * sig
-    dx = dy * (t + x * dtanh_dsp * dsp_dx)
+    # d(out)/dx = tanh(sp) + x * dtanh_dsp * dsp_dx
+    dx = dy * (tanh_sp + x * dtanh_dsp * dsp_dx)
     tl.store(DX + offs, dx, mask=mask)
 
 

@@ -14,7 +14,7 @@ def test_forward_parity(shape_name, dtype):
     x = torch.randn(shape["x"][0], shape["x"][1], shape["x"][2], dtype=dtype, device="cuda")
     B, M = shape["x"][0], shape["x"][1]
     D = shape["x"][2]
-    total_tokens = shape["total_tokens"]
+    total_tokens = shape["x"][1]  # indices range over the full sequence length
     torch.manual_seed(42)
     indices = torch.randint(0, total_tokens, (B, M), device="cuda")
     accum = torch.randn(B, M, D, dtype=dtype, device="cuda")
@@ -31,7 +31,7 @@ def test_backward_parity(shape_name):
     x2 = x1.detach().clone().requires_grad_(True)
     B, M = shape["x"][0], shape["x"][1]
     D = shape["x"][2]
-    total_tokens = shape["total_tokens"]
+    total_tokens = shape["x"][1]  # indices range over the full sequence length
     torch.manual_seed(42)
     indices = torch.randint(0, total_tokens, (B, M), device="cuda")
     accum1 = torch.randn(B, M, D, dtype=torch.float32, device="cuda", requires_grad=True)

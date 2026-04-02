@@ -1,0 +1,25 @@
+{
+  "id": "fused_index_select_mean_010",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "......                                                                   [100%]\n6 passed in 5.46s\n",
+  "benchmark": {
+    "small": {
+      "baseline_ms": 0.1045,
+      "kernel_ms": 0.1089,
+      "speedup": 0.96
+    },
+    "medium": {
+      "baseline_ms": 0.1027,
+      "kernel_ms": 0.1255,
+      "speedup": 0.818
+    },
+    "large": {
+      "baseline_ms": 0.1125,
+      "kernel_ms": 0.3124,
+      "speedup": 0.36
+    }
+  },
+  "benchmark_output": "small: 0.1045 ms -> 0.1089 ms (0.96x)\nmedium: 0.1027 ms -> 0.1255 ms (0.82x)\nlarge: 0.1125 ms -> 0.3124 ms (0.36x)\nBENCH_RESULT={\"small\": {\"baseline_ms\": 0.1045, \"kernel_ms\": 0.1089, \"speedup\": 0.96}, \"medium\": {\"baseline_ms\": 0.1027, \"kernel_ms\": 0.1255, \"speedup\": 0.818}, \"large\": {\"baseline_ms\": 0.1125, \"kernel_ms\": 0.3124, \"speedup\": 0.36}}\n",
+  "timestamp": "2026-04-02T06:54:30.775294"
+}

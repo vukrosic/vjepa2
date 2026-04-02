@@ -83,7 +83,7 @@ class FusedArgsortGather(torch.autograd.Function):
         grad_x = torch.zeros_like(grad_out)
 
         @triton.jit
-        def _scatter_kernel(GO, IDX, GX, B, N, D, BLOCK_D):
+        def _scatter_kernel(GO, IDX, GX, B, N, D, BLOCK_D: tl.constexpr):
             pid = tl.program_id(0)
             b = pid // N
             n = pid % N

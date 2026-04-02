@@ -1,0 +1,25 @@
+{
+  "id": "fused_3d_sincos_embed_005",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 6.46s\n",
+  "benchmark": {
+    "vit_l_16f": {
+      "baseline_ms": 99.8688,
+      "kernel_ms": 0.1103,
+      "speedup": 905.341
+    },
+    "vit_l_8f": {
+      "baseline_ms": 106.3143,
+      "kernel_ms": 0.1096,
+      "speedup": 970.032
+    },
+    "vit_h_16f": {
+      "baseline_ms": 124.8418,
+      "kernel_ms": 0.1093,
+      "speedup": 1141.855
+    }
+  },
+  "benchmark_output": "vit_l_16f: 99.8688 ms -> 0.1103 ms (905.34x)\nvit_l_8f: 106.3143 ms -> 0.1096 ms (970.03x)\nvit_h_16f: 124.8418 ms -> 0.1093 ms (1141.85x)\nBENCH_RESULT={\"vit_l_16f\": {\"baseline_ms\": 99.8688, \"kernel_ms\": 0.1103, \"speedup\": 905.341}, \"vit_l_8f\": {\"baseline_ms\": 106.3143, \"kernel_ms\": 0.1096, \"speedup\": 970.032}, \"vit_h_16f\": {\"baseline_ms\": 124.8418, \"kernel_ms\": 0.1093, \"speedup\": 1141.855}}\n",
+  "timestamp": "2026-04-02T06:41:47.293606"
+}

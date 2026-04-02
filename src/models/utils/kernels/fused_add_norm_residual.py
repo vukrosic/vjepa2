@@ -16,129 +16,94 @@ def baseline_fn(x, b1, b2, weight, bias, eps=1e-5):
 
 # --- KERNEL ---
 @triton.jit
-def _fused_add_norm_fwd(X, B1, B2, W, B, Y, N: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr, BLOCK_D: tl.constexpr):
-    pid = tl.program_id(0)
-    offs_d = tl.arange(0, BLOCK_D)
-    mask_d = offs_d < D
-    # Load and sum x + b1 + b2
-    sum_val = 0.0
-    for d in range(D):
-        idx = pid * D + d
-        x0 = tl.load(X + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x1 = tl.load(B1 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x2 = tl.load(B2 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        sum_val += x0 + x1 + x2
-        mask_d = (offs_d + d + 1) < D
-    mean = sum_val / D
+def _fused_add_norm_fwd(
+    X, B1, B2, W, B_out, Y,
+    BN: tl.constexpr, D: tl.constexpr,
+    EPS: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Grid: (BN,) — one program per row of length D.
 
-    # Compute variance
-    sq_sum = 0.0
-    mask_d = offs_d < D
-    for d in range(D):
-        idx = pid * D + d
-        x0 = tl.load(X + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x1 = tl.load(B1 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x2 = tl.load(B2 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        val = x0 + x1 + x2 - mean
-        sq_sum += val * val
-        mask_d = (offs_d + d + 1) < D
-    var = sq_sum / D
+    Loads full row in one block, computes mean/variance,
+    then normalizes and stores.
+    """
+    pid = tl.program_id(0)
+    row_base = pid * D
+    offs = tl.arange(0, BLOCK_D)
+    mask = offs < D
+
+    x0 = tl.load(X + row_base + offs, mask=mask, other=0.0).to(tl.float32)
+    x1 = tl.load(B1 + row_base + offs, mask=mask, other=0.0).to(tl.float32)
+    x2 = tl.load(B2 + row_base + offs, mask=mask, other=0.0).to(tl.float32)
+    row = x0 + x1 + x2
+
+    mean = tl.sum(row, axis=0) / D
+    var = tl.sum((row - mean) * (row - mean), axis=0) / D
     inv_std = 1.0 / tl.sqrt(var + EPS)
 
-    # Normalize and apply weight/bias
-    mask_d = offs_d < D
-    for d in range(D):
-        idx = pid * D + d
-        x0 = tl.load(X + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x1 = tl.load(B1 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x2 = tl.load(B2 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        val = (x0 + x1 + x2 - mean) * inv_std
-        w = tl.load(W + d, mask=mask_d, other=0.0).to(tl.float32)
-        b = tl.load(B + d, mask=mask_d, other=0.0).to(tl.float32)
-        out = val * w + b
-        tl.store(Y + idx, out, mask=mask_d)
-        mask_d = (offs_d + d + 1) < D
-
-
-@triton.jit
-def _fused_add_norm_bwd(X, B1, B2, W, DY, DX, DB1, DB2, DW, DB, N: tl.constexpr, D: tl.constexpr, EPS: tl.constexpr, BLOCK_D: tl.constexpr):
-    pid = tl.program_id(0)
-    offs_d = tl.arange(0, BLOCK_D)
-    mask_d = offs_d < D
-
-    # Recompute mean and variance
-    sum_val = 0.0
-    for d in range(D):
-        idx = pid * D + d
-        x0 = tl.load(X + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x1 = tl.load(B1 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x2 = tl.load(B2 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        sum_val += x0 + x1 + x2
-        mask_d = (offs_d + d + 1) < D
-    mean = sum_val / D
-
-    sq_sum = 0.0
-    mask_d = offs_d < D
-    for d in range(D):
-        idx = pid * D + d
-        x0 = tl.load(X + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x1 = tl.load(B1 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x2 = tl.load(B2 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        val = x0 + x1 + x2 - mean
-        sq_sum += val * val
-        mask_d = (offs_d + d + 1) < D
-    var = sq_sum / D
-    inv_std = 1.0 / tl.sqrt(var + EPS)
-
-    # Backward: dL/dx, dL/db1, dL/db2, dL/dw, dL/db
-    for d in range(D):
-        idx = pid * D + d
-        dy = tl.load(DY + idx, mask=mask_d, other=0.0).to(tl.float32)
-        w = tl.load(W + d, mask=mask_d, other=0.0).to(tl.float32)
-        # dval/dx = w * inv_std
-        d_out = dy * w * inv_std
-        tl.store(DX + idx, d_out, mask=mask_d)
-        tl.store(DB1 + idx, d_out, mask=mask_d)
-        tl.store(DB2 + idx, d_out, mask=mask_d)
-        # dL/dw += dy * val
-        x0 = tl.load(X + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x1 = tl.load(B1 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        x2 = tl.load(B2 + idx, mask=mask_d, other=0.0).to(tl.float32)
-        val = (x0 + x1 + x2 - mean) * inv_std
-        dw = dy * val
-        tl.atomic_add(DW + d, dw, mask=mask_d)
-        tl.atomic_add(DB + d, dy, mask=mask_d)
-        mask_d = (offs_d + d + 1) < D
+    norm = (row - mean) * inv_std
+    w = tl.load(W + offs, mask=mask, other=0.0).to(tl.float32)
+    b = tl.load(B_out + offs, mask=mask, other=0.0).to(tl.float32)
+    out = norm * w + b
+    tl.store(Y + row_base + offs, out, mask=mask)
 
 
 class FusedAddNormResidual(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, b1, b2, weight, bias, eps=1e-5):
         assert x.is_contiguous() and b1.is_contiguous() and b2.is_contiguous()
-        B, D = x.shape
-        ctx.save_for_backward(x, b1, b2, weight, bias)
+        orig_shape = x.shape
+        x_flat = x.reshape(-1)
+        b1_flat = b1.reshape(-1)
+        b2_flat = b2.reshape(-1)
+        N_total = x_flat.numel()
+        BN = N_total // x.shape[-1]
+        D = x.shape[-1]
+        ctx.save_for_backward(x_flat, b1_flat, b2_flat, weight, bias)
         ctx.eps = eps
-        y = torch.empty_like(x)
+        ctx.BN = BN
+        ctx.D = D
+        y_flat = torch.empty_like(x_flat)
         BLOCK_D = triton.next_power_of_2(D)
-        grid = (B,)
-        _fused_add_norm_fwd[grid](x, b1, b2, weight, bias, y, B, D, eps, BLOCK_D=BLOCK_D, num_warps=4)
-        return y
+        grid = (BN,)
+        _fused_add_norm_fwd[grid](
+            x_flat, b1_flat, b2_flat, weight, bias, y_flat,
+            BN=BN, D=D, EPS=eps, BLOCK_D=BLOCK_D, num_warps=4,
+        )
+        return y_flat.reshape(orig_shape)
 
     @staticmethod
     def backward(ctx, dy):
+        # Use PyTorch for backward (fused kernel is for forward speed)
+        orig_shape = dy.shape
         x, b1, b2, weight, bias = ctx.saved_tensors
+        BN, D = ctx.BN, ctx.D
+        del BN
+        B, N, D = orig_shape[0], orig_shape[1], orig_shape[2]
+        N = orig_shape.numel() // (B * D)
         eps = ctx.eps
-        B, D = x.shape
-        dy = dy.contiguous()
-        dx = torch.empty_like(x)
-        db1 = torch.empty_like(b1)
-        db2 = torch.empty_like(b2)
-        dw = torch.zeros_like(weight)
-        db = torch.zeros_like(bias)
-        BLOCK_D = triton.next_power_of_2(D)
-        grid = (B,)
-        _fused_add_norm_bwd[grid](x, b1, b2, weight, dy, dx, db1, db2, dw, db, B, D, eps, BLOCK_D=BLOCK_D, num_warps=4)
-        return dx, db1, db2, dw, db, None
+
+        # Reshape to (B, N, D) for proper LayerNorm backward
+        row = x.reshape(B, N, D) + b1.reshape(B, N, D) + b2.reshape(B, N, D)
+        mean = row.sum(dim=-1, keepdim=True) / D
+        var = ((row - mean) ** 2).sum(dim=-1, keepdim=True) / D
+        inv_std = 1.0 / torch.sqrt(var + eps)
+        norm = (row - mean) * inv_std
+
+        dy_3d = dy.reshape(B, N, D)
+        dnorm = dy_3d * weight  # broadcast weight (D,) over (B, N, D)
+        dvar = (dnorm * (row - mean) * (-0.5) * inv_std.pow(3)).sum(dim=-1, keepdim=True)
+        dmean = (dnorm * (-inv_std)).sum(dim=-1, keepdim=True) + \
+                dvar * (-2.0 * (row - mean)).sum(dim=-1, keepdim=True) / D
+        drow = dnorm * inv_std + dvar * 2.0 * (row - mean) / D + dmean / D
+
+        dx = drow.clone()
+        db1 = drow.clone()
+        db2 = drow.clone()
+        dw = (dy_3d * norm).sum(dim=(0, 1))  # (D,)
+        db = dy_3d.sum(dim=(0, 1))
+
+        return dx.reshape(orig_shape), db1.reshape(orig_shape), db2.reshape(orig_shape), dw, db, None
 
 
 def kernel_fn(x, b1, b2, weight, bias, eps=1e-5):

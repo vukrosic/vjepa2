@@ -1,0 +1,25 @@
+{
+  "id": "fused_scale_grad_001",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "......                                                                   [100%]\n6 passed in 5.26s\n",
+  "benchmark": {
+    "vit_l_grad": {
+      "baseline_ms": 0.1113,
+      "kernel_ms": 0.1089,
+      "speedup": 1.022
+    },
+    "vit_h_grad": {
+      "baseline_ms": 0.1521,
+      "kernel_ms": 0.1072,
+      "speedup": 1.419
+    },
+    "small_grad": {
+      "baseline_ms": 0.1089,
+      "kernel_ms": 0.1078,
+      "speedup": 1.01
+    }
+  },
+  "benchmark_output": "vit_l_grad: 0.1113 ms -> 0.1089 ms (1.02x)\nvit_h_grad: 0.1521 ms -> 0.1072 ms (1.42x)\nsmall_grad: 0.1089 ms -> 0.1078 ms (1.01x)\nBENCH_RESULT={\"vit_l_grad\": {\"baseline_ms\": 0.1113, \"kernel_ms\": 0.1089, \"speedup\": 1.022}, \"vit_h_grad\": {\"baseline_ms\": 0.1521, \"kernel_ms\": 0.1072, \"speedup\": 1.419}, \"small_grad\": {\"baseline_ms\": 0.1089, \"kernel_ms\": 0.1078, \"speedup\": 1.01}}\n",
+  "timestamp": "2026-04-02T06:08:47.087377"
+}

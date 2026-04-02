@@ -1,59 +1,62 @@
-"""Fused softmax + cross entropy kernel for distillation loss.
-
-Pattern: same as F.cross_entropy(logits / T, target, reduction='mean')
-Fuses: subtract max + exp + sum + log-softmax in one kernel pass.
-Numerically stable: avoids intermediate softmax probabilities tensor.
-"""
+"""Fused softmax + cross entropy kernel for distillation loss."""
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
 
-# --- BASELINE (exact copy) ---
 def baseline_fn(logits, target_indices, temperature=0.07):
-    """Same as: F.cross_entropy(logits / T, target, reduction='mean')"""
     return torch.nn.functional.cross_entropy(logits / temperature, target_indices)
 
 
-# --- KERNEL ---
 @triton.jit
-def _fused_softmax_ce_fwd(LOGITS, TARGETS, Y, B: tl.constexpr, C: tl.constexpr, TEMP: tl.constexpr, BLOCK_C: tl.constexpr):
+def _fwd(LOGITS, TARGETS, Y, B: tl.constexpr, C: tl.constexpr, TEMP: tl.constexpr):
     pid_b = tl.program_id(0)
-    offs_c = tl.arange(0, BLOCK_C)
-    mask_c = offs_c < C
     row_base = pid_b * C
 
-    # Phase 1: subtract max per row (numerical stability)
-    max_val = -1e9
+    # Online max using scalar loads
+    m_val = -1e9
     for c in range(C):
-        x = tl.load(LOGITS + row_base + c, mask=mask_c, other=0.0).to(tl.float32)
-        max_val = tl.max(max_val, x / TEMP)
-        mask_c = (offs_c + c + 1) < C
-    mask_c = offs_c < C
+        x = tl.load(LOGITS + row_base + c).to(tl.float32)
+        m_val = tl.where(m_val > x / TEMP, m_val, x / TEMP)
 
-    # Phase 2: compute exp sum
-    exp_sum = 0.0
+    # Online exp-sum using scalar loads
+    e_sum = 0.0
     for c in range(C):
-        x = tl.load(LOGITS + row_base + c, mask=mask_c, other=0.0).to(tl.float32)
-        exp_sum += tl.exp(x / TEMP - max_val)
-        mask_c = (offs_c + c + 1) < C
-    mask_c = offs_c < C
+        x = tl.load(LOGITS + row_base + c).to(tl.float32)
+        e_sum += tl.exp(x / TEMP - m_val)
 
-    # Phase 3: compute cross-entropy loss: -log(exp(x_t)/sum) = log(sum) - x_t
+    # Loss and store
     target = tl.load(TARGETS + pid_b).to(tl.int32)
-    x_target = tl.load(LOGITS + row_base + target, mask=mask_c, other=0.0).to(tl.float32)
-    loss = max_val + tl.log(exp_sum) - x_target / TEMP
+    x_target = tl.load(LOGITS + row_base + target).to(tl.float32)
+    loss = m_val + tl.log(e_sum) - x_target / TEMP
     tl.store(Y + pid_b, loss)
 
 
+class FusedSoftmaxCrossEntropy(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, logits, target_indices, temperature=0.07):
+        assert logits.is_contiguous() and target_indices.is_contiguous()
+        B, C = logits.shape
+        y = torch.empty(B, dtype=logits.dtype, device=logits.device)
+        _fwd[(B,)](logits, target_indices, y, B, C, temperature, num_warps=4)
+        ctx.save_for_backward(logits, target_indices)
+        ctx.temperature = temperature
+        return y.mean()
+
+    @staticmethod
+    def backward(ctx, dy):
+        logits, target_indices = ctx.saved_tensors
+        grad = torch.autograd.grad(
+            F.cross_entropy(logits / ctx.temperature, target_indices, reduction='mean'),
+            logits,
+            grad_outputs=(dy.expand_as(logits),) if dy.numel() > 1 else (dy,),
+        )[0]
+        return grad, None, None
+
+
 def kernel_fn(logits, target_indices, temperature=0.07):
-    assert logits.is_contiguous() and target_indices.is_contiguous()
-    B, C = logits.shape
-    y = torch.empty(B, dtype=logits.dtype, device=logits.device)
-    BLOCK_C = triton.next_power_of_2(C)
-    grid = (B,)
-    _fused_softmax_ce_fwd[grid](logits, target_indices, y, B, C, temperature, BLOCK_C=BLOCK_C, num_warps=4)
-    return y.mean()
+    return FusedSoftmaxCrossEntropy.apply(logits, target_indices, temperature)
 
 
 def can_use_kernel(logits, target_indices, temperature):

@@ -1,0 +1,25 @@
+{
+  "id": "fused_leaky_relu_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 6.77s\n",
+  "benchmark": {
+    "vit_l_mlp": {
+      "baseline_ms": 0.0419,
+      "kernel_ms": 0.1467,
+      "speedup": 0.286
+    },
+    "vit_h_mlp": {
+      "baseline_ms": 0.0999,
+      "kernel_ms": 0.1473,
+      "speedup": 0.678
+    },
+    "small": {
+      "baseline_ms": 0.0363,
+      "kernel_ms": 0.1474,
+      "speedup": 0.246
+    }
+  },
+  "benchmark_output": "vit_l_mlp: 0.0419 ms -> 0.1467 ms (0.29x)\nvit_h_mlp: 0.0999 ms -> 0.1473 ms (0.68x)\nsmall: 0.0363 ms -> 0.1474 ms (0.25x)\nBENCH_RESULT={\"vit_l_mlp\": {\"baseline_ms\": 0.0419, \"kernel_ms\": 0.1467, \"speedup\": 0.286}, \"vit_h_mlp\": {\"baseline_ms\": 0.0999, \"kernel_ms\": 0.1473, \"speedup\": 0.678}, \"small\": {\"baseline_ms\": 0.0363, \"kernel_ms\": 0.1474, \"speedup\": 0.246}}\n",
+  "timestamp": "2026-04-02T05:59:16.654204"
+}

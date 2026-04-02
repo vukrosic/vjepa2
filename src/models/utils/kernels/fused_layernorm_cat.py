@@ -114,7 +114,7 @@ class FusedLayerNormSplit(torch.autograd.Function):
             w = tl.load(W + offs, mask=mask, other=1.0).to(tl.float32)
             do = tl.load(DO + ((b * N + n) * ns + s) * D + offs, mask=mask, other=0.0).to(tl.float32)
             dx_norm = do * w
-            dvar = tl.sum(dx_norm * diff * (-0.5) * inv_std**3, axis=0)
+            dvar = tl.sum(dx_norm * diff * (-0.5) * inv_std * inv_std * inv_std, axis=0)
             dmean = tl.sum(-dx_norm * inv_std, axis=0) + dvar * tl.sum(-2.0 * diff, axis=0) / D
             dxi = dx_norm * inv_std + dvar * 2.0 * diff / D + dmean / D
             dxi = tl.where(mask, dxi, 0.0)

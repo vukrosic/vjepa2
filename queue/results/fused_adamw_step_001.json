@@ -1,9 +1,25 @@
 {
   "id": "fused_adamw_step_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n________________________ test_forward_parity[attn_proj] ________________________\ntests/queue/test_fused_adamw_step.py:15: in test_forward_parity\n    param1 = torch.randn(*param_shape, dtype=torch.float32, device=\"cuda\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.12/dist-packages/torch/cuda/__init__.py:478: in _lazy_init\n    torch._C._cuda_init()\nE   RuntimeError: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_adamw_step.py::test_forward_parity[attn_proj]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 2.59s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T05:45:32.779824"
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 4.98s\n",
+  "benchmark": {
+    "attn_proj": {
+      "baseline_ms": 0.2501,
+      "kernel_ms": 0.0907,
+      "speedup": 2.757
+    },
+    "mlp_fc": {
+      "baseline_ms": 0.4419,
+      "kernel_ms": 0.1378,
+      "speedup": 3.207
+    },
+    "vit_h_attn": {
+      "baseline_ms": 0.2906,
+      "kernel_ms": 0.0907,
+      "speedup": 3.204
+    }
+  },
+  "benchmark_output": "attn_proj: 0.2501 ms -> 0.0907 ms (2.76x)\nmlp_fc: 0.4419 ms -> 0.1378 ms (3.21x)\nvit_h_attn: 0.2906 ms -> 0.0907 ms (3.20x)\nBENCH_RESULT={\"attn_proj\": {\"baseline_ms\": 0.2501, \"kernel_ms\": 0.0907, \"speedup\": 2.757}, \"mlp_fc\": {\"baseline_ms\": 0.4419, \"kernel_ms\": 0.1378, \"speedup\": 3.207}, \"vit_h_attn\": {\"baseline_ms\": 0.2906, \"kernel_ms\": 0.0907, \"speedup\": 3.204}}\n",
+  "timestamp": "2026-04-02T06:14:32.274971"
 }

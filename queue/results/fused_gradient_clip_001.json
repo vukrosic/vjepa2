@@ -1,9 +1,25 @@
 {
   "id": "fused_gradient_clip_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n_______________________ test_forward_parity[attn_weight] _______________________\ntests/queue/test_fused_gradient_clip.py:12: in test_forward_parity\n    grad = torch.randn(*shape[\"grad\"], dtype=torch.float32, device=\"cuda\") * 0.01\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.12/dist-packages/torch/cuda/__init__.py:478: in _lazy_init\n    torch._C._cuda_init()\nE   RuntimeError: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_gradient_clip.py::test_forward_parity[attn_weight]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 2.54s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T05:45:29.004040"
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 5.30s\n",
+  "benchmark": {
+    "attn_weight": {
+      "baseline_ms": 0.331,
+      "kernel_ms": 0.2537,
+      "speedup": 1.305
+    },
+    "mlp_weight": {
+      "baseline_ms": 0.3426,
+      "kernel_ms": 0.2585,
+      "speedup": 1.325
+    },
+    "vit_h_weight": {
+      "baseline_ms": 0.3514,
+      "kernel_ms": 0.2611,
+      "speedup": 1.346
+    }
+  },
+  "benchmark_output": "attn_weight: 0.3310 ms -> 0.2537 ms (1.30x)\nmlp_weight: 0.3426 ms -> 0.2585 ms (1.33x)\nvit_h_weight: 0.3514 ms -> 0.2611 ms (1.35x)\nBENCH_RESULT={\"attn_weight\": {\"baseline_ms\": 0.331, \"kernel_ms\": 0.2537, \"speedup\": 1.305}, \"mlp_weight\": {\"baseline_ms\": 0.3426, \"kernel_ms\": 0.2585, \"speedup\": 1.325}, \"vit_h_weight\": {\"baseline_ms\": 0.3514, \"kernel_ms\": 0.2611, \"speedup\": 1.346}}\n",
+  "timestamp": "2026-04-02T06:14:19.964558"
 }

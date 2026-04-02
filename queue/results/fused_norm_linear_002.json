@@ -1,0 +1,25 @@
+{
+  "id": "fused_norm_linear_002",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "......                                                                   [100%]\n6 passed in 3.46s\n",
+  "benchmark": {
+    "vit_l_to_3x": {
+      "baseline_ms": 0.2557,
+      "kernel_ms": 0.2554,
+      "speedup": 1.001
+    },
+    "vit_h_to_3x": {
+      "baseline_ms": 0.6214,
+      "kernel_ms": 0.6107,
+      "speedup": 1.018
+    },
+    "small": {
+      "baseline_ms": 0.1525,
+      "kernel_ms": 0.19,
+      "speedup": 0.802
+    }
+  },
+  "benchmark_output": "vit_l_to_3x: 0.2557 ms -> 0.2554 ms (1.00x)\nvit_h_to_3x: 0.6214 ms -> 0.6107 ms (1.02x)\nsmall: 0.1525 ms -> 0.1900 ms (0.80x)\nBENCH_RESULT={\"vit_l_to_3x\": {\"baseline_ms\": 0.2557, \"kernel_ms\": 0.2554, \"speedup\": 1.001}, \"vit_h_to_3x\": {\"baseline_ms\": 0.6214, \"kernel_ms\": 0.6107, \"speedup\": 1.018}, \"small\": {\"baseline_ms\": 0.1525, \"kernel_ms\": 0.19, \"speedup\": 0.802}}\n",
+  "timestamp": "2026-04-02T06:28:53.166853"
+}

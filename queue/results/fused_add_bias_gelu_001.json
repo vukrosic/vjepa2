@@ -1,0 +1,9 @@
+{
+  "id": "fused_add_bias_gelu_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_add_bias_gelu.py:21: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 2066736 / 8388608 (24.6%)\nE   Greatest absolute difference: 0.021484375 at index (0, 0, 32) (up to 0.01 allowed)\nE   Greatest relative difference: 6.9765625 at index (0, 52, 2149) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_add_bias_gelu.py::test_forward_parity[dtype0-vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.46s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:03:52.968135"
+}

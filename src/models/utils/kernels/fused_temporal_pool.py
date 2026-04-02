@@ -34,16 +34,20 @@ def _temporal_pool_fwd_kernel(
     offs_c = tl.arange(0, BLOCK_C)
     mask_c = offs_c < C
 
+    # Initialize acc as block-level tensor before loop
     acc = tl.zeros([BLOCK_C], dtype=tl.float32)
     for p in range(pool_size):
         t_in = t_out * pool_size + p
+        # Block-level pointer arithmetic
         x_base = (b * T * N + t_in * N + n) * C
-        vals = tl.load(X + x_base + offs_c, mask=mask_c, other=0.0).to(tl.float32)
+        x_ptrs = x_base + offs_c
+        vals = tl.load(X + x_ptrs, mask=mask_c, other=0.0).to(tl.float32)
         acc = acc + vals
 
     acc = acc / pool_size
     out_base = (b * (T // pool_size) * N + t_out * N + n) * C
-    tl.store(OUT + out_base + offs_c, acc, mask=mask_c)
+    out_ptrs = out_base + offs_c
+    tl.store(OUT + out_ptrs, acc, mask=mask_c)
 
 
 def kernel_fn(x, pool_size):

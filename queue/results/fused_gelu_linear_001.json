@@ -1,0 +1,9 @@
+{
+  "id": "fused_gelu_linear_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n____________________ test_forward_parity[dtype0-vit_l_proj] ____________________\ntests/queue/test_fused_gelu_linear.py:21: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 2620451 / 6291456 (41.7%)\nE   Greatest absolute difference: 0.0625 at index (0, 1, 630) (up to 0.005 allowed)\nE   Greatest relative difference: 517.5 at index (0, 254, 1491) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_gelu_linear.py::test_forward_parity[dtype0-vit_l_proj]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.64s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:11:01.369671"
+}

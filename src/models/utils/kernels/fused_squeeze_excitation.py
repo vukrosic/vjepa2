@@ -22,11 +22,16 @@ def _fused_se_fwd(X, SE, Y, B: tl.constexpr, N: tl.constexpr, C: tl.constexpr, B
     offs_c = tl.arange(0, BLOCK_C)
     mask_c = offs_c < C
     for n in range(N):
-        x = tl.load(X + pid_b * N * C + n * C + offs_c, mask=mask_c).to(tl.float32)
-        s = tl.load(SE + pid_b * C + offs_c, mask=mask_c).to(tl.float32)
+        # Block-level pointer arithmetic
+        x_base = pid_b * N * C + n * C
+        x_ptrs = x_base + offs_c
+        se_base = pid_b * C
+        se_ptrs = se_base + offs_c
+        x = tl.load(X + x_ptrs, mask=mask_c).to(tl.float32)
+        s = tl.load(SE + se_ptrs, mask=mask_c).to(tl.float32)
         sig = 1.0 / (1.0 + tl.exp(-s))
         y = x * sig
-        tl.store(Y + pid_b * N * C + n * C + offs_c, y, mask=mask_c)
+        tl.store(Y + x_ptrs, y, mask=mask_c)
 
 
 @triton.jit
@@ -35,15 +40,22 @@ def _fused_se_bwd(X, SE, DY, DX, B: tl.constexpr, N: tl.constexpr, C: tl.constex
     offs_c = tl.arange(0, BLOCK_C)
     mask_c = offs_c < C
     for n in range(N):
-        x = tl.load(X + pid_b * N * C + n * C + offs_c, mask=mask_c).to(tl.float32)
-        s = tl.load(SE + pid_b * C + offs_c, mask=mask_c).to(tl.float32)
+        # Block-level pointer arithmetic
+        x_base = pid_b * N * C + n * C
+        x_ptrs = x_base + offs_c
+        se_base = pid_b * C
+        se_ptrs = se_base + offs_c
+        dy_base = pid_b * N * C + n * C
+        dy_ptrs = dy_base + offs_c
+        x = tl.load(X + x_ptrs, mask=mask_c).to(tl.float32)
+        s = tl.load(SE + se_ptrs, mask=mask_c).to(tl.float32)
         sig = 1.0 / (1.0 + tl.exp(-s))
-        dy = tl.load(DY + pid_b * N * C + n * C + offs_c, mask=mask_c).to(tl.float32)
+        dy = tl.load(DY + dy_ptrs, mask=mask_c).to(tl.float32)
         # d(x*sig)/dx = sig + x * sig * (1 - sig) = sig * (1 + x * (1 - sig))
         dsig_ds = sig * (1.0 - sig)
         dx = dy * sig + dy * x * dsig_ds
         # d(x*sig)/dse = x * sig * (1 - sig)
-        tl.store(DX + pid_b * N * C + n * C + offs_c, dx, mask=mask_c)
+        tl.store(DX + x_ptrs, dx, mask=mask_c)
 
 
 class FusedSqueezeExcitation(torch.autograd.Function):

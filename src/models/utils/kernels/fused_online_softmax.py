@@ -1,89 +1,81 @@
-"""Fused softmax kernel using online softmax algorithm.
+"""Row-wise softmax kernel using a stable online-style reduction.
 
-Computes softmax(scores, dim=-1) with a single program per row.
-Avoids materializing the full exp(scores) array — computes max first
-via parallel reduction, then normalizes in the same kernel.
+Computes softmax over the last dimension of a contiguous tensor by flattening
+the leading dimensions into rows. One Triton program handles one row.
 """
 import torch
 import triton
 import triton.language as tl
 
 
-# --- BASELINE ---
 def baseline_fn(scores):
-    """scores: [..., D] — softmax over last dim."""
+    """scores: [..., D] — softmax over the last dimension."""
     return torch.softmax(scores, dim=-1)
 
 
-# --- KERNEL ---
 @triton.jit
-def _softmax_max_kernel(X, MAX_OUT, N, BLOCK: tl.constexpr):
-    """One program per N-element row. Computes row max using block-level reduction."""
+def _online_softmax_fwd(X, Y, STRIDE_ROW, D: tl.constexpr, BLOCK_D: tl.constexpr):
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
-    x = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)
-    # Block-level max reduction: tl.max without axis returns scalar max over all elements
-    mx = tl.max(tl.where(mask, x, -float("inf")))
-    tl.store(MAX_OUT + pid, mx)
+    row_ptr = X + pid * STRIDE_ROW
+    out_ptr = Y + pid * STRIDE_ROW
 
+    row_max = -float("inf")
+    for off in range(0, D, BLOCK_D):
+        cols = off + tl.arange(0, BLOCK_D)
+        mask = cols < D
+        vals = tl.load(row_ptr + cols, mask=mask, other=-float("inf")).to(tl.float32)
+        row_max = tl.maximum(row_max, tl.max(vals, axis=0))
 
-@triton.jit
-def _softmax_exp_sum_kernel(X, MAX_IN, EXP_SUM_OUT, N, BLOCK: tl.constexpr):
-    """One program per N-element row. Computes sum(exp(x - row_max))."""
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
-    x = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)
-    row_max = tl.load(MAX_IN + pid)
-    exp_vals = tl.exp(x - row_max)
-    total = tl.sum(exp_vals, axis=0)
-    tl.store(EXP_SUM_OUT + pid, total)
+    exp_acc = tl.zeros([BLOCK_D], dtype=tl.float32)
+    for off in range(0, D, BLOCK_D):
+        cols = off + tl.arange(0, BLOCK_D)
+        mask = cols < D
+        vals = tl.load(row_ptr + cols, mask=mask, other=-float("inf")).to(tl.float32)
+        exp_acc += tl.where(mask, tl.exp(vals - row_max), 0.0)
+    denom = tl.sum(exp_acc, axis=0)
 
-
-@triton.jit
-def _softmax_norm_kernel(X, MAX_IN, SUM_IN, OUT, N, BLOCK: tl.constexpr):
-    """One program per row. Normalizes: exp(x - max) / sum."""
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
-    x = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)
-    row_max = tl.load(MAX_IN + pid)
-    total = tl.load(SUM_IN + pid)
-    result = tl.exp(x - row_max) / total
-    tl.store(OUT + offs, result.to(x.dtype), mask=mask)
+    for off in range(0, D, BLOCK_D):
+        cols = off + tl.arange(0, BLOCK_D)
+        mask = cols < D
+        vals = tl.load(row_ptr + cols, mask=mask, other=-float("inf")).to(tl.float32)
+        probs = tl.exp(vals - row_max) / denom
+        tl.store(out_ptr + cols, probs, mask=mask)
 
 
 def kernel_fn(scores):
-    """
-    scores: [*, D] contiguous. Returns softmax over last dim.
-    """
-    flat = scores.flatten()
-    N = flat.shape[0]
-    BLOCK = min(triton.next_power_of_2(N), 4096)
-    n_programs = (N + BLOCK - 1) // BLOCK
+    if not can_use_kernel(scores):
+        return baseline_fn(scores)
 
-    x = flat.contiguous()
-    row_max = torch.empty(n_programs, dtype=torch.float32, device=x.device)
-    exp_sum = torch.empty(n_programs, dtype=torch.float32, device=x.device)
-    out_flat = torch.empty_like(x)
+    scores_2d = scores.reshape(-1, scores.shape[-1]).contiguous()
+    rows, d_model = scores_2d.shape
+    out_2d = torch.empty_like(scores_2d)
 
-    _softmax_max_kernel[(n_programs,)](x, row_max, N, BLOCK=BLOCK, num_warps=4)
-    _softmax_exp_sum_kernel[(n_programs,)](x, row_max, exp_sum, N, BLOCK=BLOCK, num_warps=4)
-    _softmax_norm_kernel[(n_programs,)](x, row_max, exp_sum, out_flat, N, BLOCK=BLOCK, num_warps=4)
-
-    return out_flat.view(scores.shape)
+    block_d = min(triton.next_power_of_2(d_model), 4096)
+    num_warps = min(16, max(1, block_d // 32))
+    _online_softmax_fwd[(rows,)](
+        scores_2d,
+        out_2d,
+        scores_2d.stride(0),
+        D=d_model,
+        BLOCK_D=block_d,
+        num_warps=num_warps,
+    )
+    return out_2d.reshape_as(scores)
 
 
 def can_use_kernel(scores):
-    return (scores.is_cuda and
-            scores.is_contiguous() and
-            scores.dtype in (torch.float16, torch.float32) and
-            scores.ndim >= 1)
+    return (
+        scores.is_cuda
+        and scores.is_contiguous()
+        and scores.ndim >= 1
+        and scores.shape[-1] > 0
+        and scores.shape[-1] <= 4096
+        and scores.dtype in (torch.float16, torch.bfloat16, torch.float32)
+    )
 
 
 SHAPES = {
-    "vit_l_short":  {"scores": (2, 16, 256, 256)},
+    "vit_l_short": {"scores": (2, 16, 256, 256)},
     "vit_l_medium": {"scores": (2, 16, 512, 512)},
-    "vit_l_long":   {"scores": (1, 16, 1024, 1024)},
+    "vit_l_long": {"scores": (1, 16, 1024, 1024)},
 }

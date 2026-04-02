@@ -1,0 +1,25 @@
+{
+  "id": "fused_mish_gate_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": "............                                                             [100%]\n12 passed in 8.31s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.1978,
+      "kernel_ms": 0.1238,
+      "speedup": 1.597
+    },
+    "vit_h": {
+      "baseline_ms": 0.487,
+      "kernel_ms": 0.2904,
+      "speedup": 1.677
+    },
+    "small": {
+      "baseline_ms": 0.0773,
+      "kernel_ms": 0.1238,
+      "speedup": 0.624
+    }
+  },
+  "benchmark_output": "vit_l: 0.1978 ms -> 0.1238 ms (1.60x)\nvit_h: 0.4870 ms -> 0.2904 ms (1.68x)\nsmall: 0.0773 ms -> 0.1238 ms (0.62x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.1978, \"kernel_ms\": 0.1238, \"speedup\": 1.597}, \"vit_h\": {\"baseline_ms\": 0.487, \"kernel_ms\": 0.2904, \"speedup\": 1.677}, \"small\": {\"baseline_ms\": 0.0773, \"kernel_ms\": 0.1238, \"speedup\": 0.624}}\n",
+  "timestamp": "2026-04-02T08:07:44.814471"
+}

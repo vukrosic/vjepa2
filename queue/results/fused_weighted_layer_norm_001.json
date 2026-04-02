@@ -1,0 +1,9 @@
+{
+  "id": "fused_weighted_layer_norm_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "\n==================================== ERRORS ====================================\n________ ERROR collecting tests/queue/test_fused_weighted_layer_norm.py ________\n/usr/local/lib/python3.12/dist-packages/_pytest/python.py:507: in importtestmodule\n    mod = import_path(\n/usr/local/lib/python3.12/dist-packages/_pytest/pathlib.py:587: in import_path\n    importlib.import_module(module_name)\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n<frozen importlib._bootstrap>:1387: in _gcd_import\n    ???\n<frozen importlib._bootstrap>:1360: in _find_and_load\n    ???\n<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked\n    ???\n<frozen importlib._bootstrap>:935: in _load_unlocked\n    ???\n/usr/local/lib/python3.12/dist-packages/_pytest/assertion/rewrite.py:197: in exec_module\n    exec(co, module.__dict__)\ntests/queue/test_fused_weighted_layer_norm.py:6: in <module>\n    from src.models.utils.kernels.fused_weighted_layer_norm import kernel_fn, baseline_fn, SHAPES\nE     File \"/workspace/vjepa2/src/models/utils/kernels/fused_weighted_layer_norm.py\", line 132\nE       )\nE       ^\nE   SyntaxError: positional argument follows keyword argument\n=========================== short test summary info ============================\nERROR tests/queue/test_fused_weighted_layer_norm.py\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 2.93s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:04:12.539597"
+}

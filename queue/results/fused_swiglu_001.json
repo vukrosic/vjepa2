@@ -1,0 +1,9 @@
+{
+  "id": "fused_swiglu_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_swiglu.py:20: in test_forward_parity\n    actual = kernel_fn(x, w1, w2)\n             ^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_swiglu.py:89: in kernel_fn\n    return FusedSwiGLU.apply(x, w1, w2)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.12/dist-packages/torch/autograd/function.py:575: in apply\n    return super().apply(*args, **kwargs)  # type: ignore[misc]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_swiglu.py:62: in forward\n    B, D = x.shape\n    ^^^^\nE   ValueError: too many values to unpack (expected 2)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_swiglu.py::test_forward_parity[dtype0-vit_l] - ...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 3.33s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:07:59.529994"
+}

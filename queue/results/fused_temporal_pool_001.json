@@ -1,9 +1,25 @@
 {
   "id": "fused_temporal_pool_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n___________________ test_forward_parity[dtype0-vit_l_16f_2x] ___________________\ntests/queue/test_fused_temporal_pool.py:16: in test_forward_parity\n    actual = kernel_fn(x, pool_size)\n             ^^^^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_temporal_pool.py:58: in kernel_fn\n    _temporal_pool_fwd_kernel[(B, T_out, N)](\n/usr/local/lib/python3.12/dist-packages/triton/runtime/jit.py:330: in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.12/dist-packages/triton/runtime/jit.py:623: in run\n    kernel = self.compile(\n/usr/local/lib/python3.12/dist-packages/triton/compiler/compiler.py:273: in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.12/dist-packages/triton/compiler/compiler.py:100: in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\nE   triton.compiler.errors.CompilationError: at 22:18:\nE   \nE       offs_c = tl.arange(0, BLOCK_C)\nE       mask_c = offs_c < C\nE   \nE       for p in range(pool_size):\nE           t_in = t_out * pool_size + p\nE           x_base = (b * T * N + t_in * N + n) * C\nE           vals = tl.load(X + x_base + offs_c, mask=mask_c, other=0.0).to(tl.float32)\nE           if p == 0:\nE               acc = vals\nE           else:\nE               acc = acc + vals\nE                     ^\nE   NameError('acc is not defined')\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_temporal_pool.py::test_forward_parity[dtype0-vit_l_16f_2x]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 4.56s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:08:40.912868"
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": "......                                                                   [100%]\n6 passed in 5.98s\n",
+  "benchmark": {
+    "vit_l_16f_2x": {
+      "baseline_ms": 0.0727,
+      "kernel_ms": 0.1387,
+      "speedup": 0.524
+    },
+    "vit_l_8f_2x": {
+      "baseline_ms": 0.0762,
+      "kernel_ms": 0.1402,
+      "speedup": 0.543
+    },
+    "vit_l_16f_4x": {
+      "baseline_ms": 0.0762,
+      "kernel_ms": 0.1399,
+      "speedup": 0.544
+    }
+  },
+  "benchmark_output": "vit_l_16f_2x: 0.0727 ms -> 0.1387 ms (0.52x)\nvit_l_8f_2x: 0.0762 ms -> 0.1402 ms (0.54x)\nvit_l_16f_4x: 0.0762 ms -> 0.1399 ms (0.54x)\nBENCH_RESULT={\"vit_l_16f_2x\": {\"baseline_ms\": 0.0727, \"kernel_ms\": 0.1387, \"speedup\": 0.524}, \"vit_l_8f_2x\": {\"baseline_ms\": 0.0762, \"kernel_ms\": 0.1402, \"speedup\": 0.543}, \"vit_l_16f_4x\": {\"baseline_ms\": 0.0762, \"kernel_ms\": 0.1399, \"speedup\": 0.544}}\n",
+  "timestamp": "2026-04-02T08:12:14.110483"
 }

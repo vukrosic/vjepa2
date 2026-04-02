@@ -1,0 +1,27 @@
+{
+  "id": "fused_swish_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.52s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.1441,
+      "kernel_ms": 0.1295,
+      "speedup": 1.113
+    },
+    "vit_h": {
+      "baseline_ms": 0.3474,
+      "kernel_ms": 0.1413,
+      "speedup": 2.458
+    },
+    "small": {
+      "baseline_ms": 0.091,
+      "kernel_ms": 0.1297,
+      "speedup": 0.701
+    }
+  },
+  "benchmark_output": "vit_l: 0.1441 ms -> 0.1295 ms (1.11x)\nvit_h: 0.3474 ms -> 0.1413 ms (2.46x)\nsmall: 0.0910 ms -> 0.1297 ms (0.70x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.1441, \"kernel_ms\": 0.1295, \"speedup\": 1.113}, \"vit_h\": {\"baseline_ms\": 0.3474, \"kernel_ms\": 0.1413, \"speedup\": 2.458}, \"small\": {\"baseline_ms\": 0.091, \"kernel_ms\": 0.1297, \"speedup\": 0.701}}\n",
+  "timestamp": "2026-04-02T08:24:49.884897",
+  "failure_category": "PARTIAL_BENCH_WIN",
+  "failure_excerpt": "......... [100%] 9 passed in 7.52s"
+}

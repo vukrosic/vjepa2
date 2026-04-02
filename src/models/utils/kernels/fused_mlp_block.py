@@ -35,8 +35,11 @@ def _fused_norm_proj_kernel(
     offs = tl.arange(0, BLOCK_D)
     mask = offs < D
 
-    x = tl.load(X_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
-    res = tl.load(RES_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
+    # Block-level base pointer: broadcast row*stride_row to match offs
+    row_base = row * stride_row + offs
+
+    x = tl.load(X_ptr + row_base, mask=mask, other=0.0).to(tl.float32)
+    res = tl.load(RES_ptr + row_base, mask=mask, other=0.0).to(tl.float32)
 
     mean = tl.sum(tl.where(mask, x, 0.0), axis=0) / D
     diff = tl.where(mask, x - mean, 0.0)
@@ -52,7 +55,7 @@ def _fused_norm_proj_kernel(
     # For simplicity: elementwise residual add only (avoids the matmul complexity)
     # Real version would need a matvec — for benchmarking we do:
     out = x_norm + res
-    tl.store(OUT_ptr + row * stride_row + offs, out.to(x.dtype), mask=mask)
+    tl.store(OUT_ptr + row_base, out.to(x.dtype), mask=mask)
 
 
 def kernel_fn(x, residual, ln_weight, ln_bias, proj1_weight, proj1_bias, eps=1e-5):

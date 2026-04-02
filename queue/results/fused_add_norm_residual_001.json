@@ -1,0 +1,25 @@
+{
+  "id": "fused_add_norm_residual_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": "............                                                             [100%]\n12 passed in 6.48s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.1177,
+      "kernel_ms": 0.2035,
+      "speedup": 0.578
+    },
+    "vit_h": {
+      "baseline_ms": 0.2147,
+      "kernel_ms": 0.1983,
+      "speedup": 1.083
+    },
+    "small": {
+      "baseline_ms": 0.1154,
+      "kernel_ms": 0.1984,
+      "speedup": 0.582
+    }
+  },
+  "benchmark_output": "vit_l: 0.1177 ms -> 0.2035 ms (0.58x)\nvit_h: 0.2147 ms -> 0.1983 ms (1.08x)\nsmall: 0.1154 ms -> 0.1984 ms (0.58x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.1177, \"kernel_ms\": 0.2035, \"speedup\": 0.578}, \"vit_h\": {\"baseline_ms\": 0.2147, \"kernel_ms\": 0.1983, \"speedup\": 1.083}, \"small\": {\"baseline_ms\": 0.1154, \"kernel_ms\": 0.1984, \"speedup\": 0.582}}\n",
+  "timestamp": "2026-04-02T08:10:24.876469"
+}

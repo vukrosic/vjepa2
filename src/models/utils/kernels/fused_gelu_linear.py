@@ -20,32 +20,33 @@ def baseline_fn(x, weight, bias):
 @triton.jit
 def _fused_gelu_fwd(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
-    x = tl.load(X + offs, mask=mask).to(tl.float32)
-    # GELU approx: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
-    cdf = 0.5 * (1.0 + libdevice.tanh(0.7978845608 * (x + 0.044715 * x * x * x)))
-    y = x * cdf
-    tl.store(Y + offs, y, mask=mask)
+    # Pure scalar loads for elementwise GELU - each program handles BLOCK elements
+    for i in range(BLOCK):
+        idx = pid * BLOCK + i
+        if idx < N:
+            x = tl.load(X + idx).to(tl.float32)
+            # GELU approx: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+            cdf = 0.5 * (1.0 + libdevice.tanh(0.7978845608 * (x + 0.044715 * x * x * x)))
+            y = x * cdf
+            tl.store(Y + idx, y)
 
 
 @triton.jit
 def _fused_gelu_bwd(X, DY, DX, N: tl.constexpr, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N
-    x = tl.load(X + offs, mask=mask).to(tl.float32)
-    dy = tl.load(DY + offs, mask=mask).to(tl.float32)
-    cdf = 0.5 * (1.0 + libdevice.tanh(0.7978845608 * (x + 0.044715 * x * x * x)))
-    y = x * cdf
-    # dGELU/dx = cdf + x * cdf' where cdf' = 0.5 * sech^2 * 0.7978845608 * (1 + 3*0.044715*x^2)
-    # Approximation: dGELU/dx ~ (0.5 * x * (1 + tanh(z)) + 0.3989422804 * x * (1 - tanh(z)^2) * (1 + 0.134145*x^2))
-    # For simplicity, use the exact derivative formula
-    z = 0.7978845608 * (x + 0.044715 * x * x * x)
-    sech2 = 1.0 / (libdevice.cosh(z) * libdevice.cosh(z))
-    dgelu_dx = cdf + x * 0.7978845608 * sech2 * (1.0 + 3.0 * 0.044715 * x * x)
-    dx = dy * dgelu_dx
-    tl.store(DX + offs, dx, mask=mask)
+    # Pure scalar loads for elementwise GELU backward
+    for i in range(BLOCK):
+        idx = pid * BLOCK + i
+        if idx < N:
+            x = tl.load(X + idx).to(tl.float32)
+            dy = tl.load(DY + idx).to(tl.float32)
+            cdf = 0.5 * (1.0 + libdevice.tanh(0.7978845608 * (x + 0.044715 * x * x * x)))
+            # dGELU/dx = cdf + x * cdf' where cdf' = 0.5 * sech^2 * 0.7978845608 * (1 + 3*0.044715*x^2)
+            z = 0.7978845608 * (x + 0.044715 * x * x * x)
+            sech2 = 1.0 / (libdevice.cosh(z) * libdevice.cosh(z))
+            dgelu_dx = cdf + x * 0.7978845608 * sech2 * (1.0 + 3.0 * 0.044715 * x * x)
+            dx = dy * dgelu_dx
+            tl.store(DX + idx, dx)
 
 
 class FusedGeluLinear(torch.autograd.Function):

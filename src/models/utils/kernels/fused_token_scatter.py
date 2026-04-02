@@ -45,8 +45,11 @@ def _token_scatter_fwd_kernel(
     for off in range(0, D, BLOCK_D):
         cols = off + tl.arange(0, BLOCK_D)
         mask = cols < D
-        val = tl.load(SRC + src_base + cols, mask=mask, other=0.0)
-        tl.store(OUT + out_base + cols, val, mask=mask)
+        # Block-level pointer arithmetic
+        src_ptrs = src_base + cols
+        out_ptrs = out_base + cols
+        val = tl.load(SRC + src_ptrs, mask=mask, other=0.0)
+        tl.store(OUT + out_ptrs, val, mask=mask)
 
 
 class FusedTokenScatter(torch.autograd.Function):
@@ -88,8 +91,11 @@ class FusedTokenScatter(torch.autograd.Function):
             for off in range(0, D, BLOCK_D):
                 cols = off + tl.arange(0, BLOCK_D)
                 mask = cols < D
-                g = tl.load(G + out_base + cols, mask=mask, other=0.0)
-                tl.store(GS + src_base + cols, g, mask=mask)
+                # Block-level pointer arithmetic
+                out_ptrs = out_base + cols
+                src_ptrs = src_base + cols
+                g = tl.load(G + out_ptrs, mask=mask, other=0.0)
+                tl.store(GS + src_ptrs, g, mask=mask)
 
         BLOCK_D = min(triton.next_power_of_2(D), 2048)
         _scatter_bwd[(B * M,)](

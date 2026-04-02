@@ -34,8 +34,11 @@ def _layernorm_add_kernel(
     offs = tl.arange(0, BLOCK_D)
     mask = offs < D
 
-    x = tl.load(X_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
-    r = tl.load(R_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
+    # Block-level base pointer: broadcast row*stride_row to match offs
+    row_base = row * stride_row + offs
+
+    x = tl.load(X_ptr + row_base, mask=mask, other=0.0).to(tl.float32)
+    r = tl.load(R_ptr + row_base, mask=mask, other=0.0).to(tl.float32)
 
     mean = tl.sum(tl.where(mask, x, 0.0), axis=0) / D
     diff = tl.where(mask, x - mean, 0.0)
@@ -47,7 +50,7 @@ def _layernorm_add_kernel(
     b = tl.load(B_ptr + offs, mask=mask, other=0.0).to(tl.float32)
     out = (x_norm * w + b) + r
 
-    tl.store(OUT_ptr + row * stride_row + offs, out.to(x.dtype), mask=mask)
+    tl.store(OUT_ptr + row_base, out.to(x.dtype), mask=mask)
 
 
 @triton.jit
@@ -64,7 +67,10 @@ def _layernorm_add_bwd_kernel(
     offs = tl.arange(0, BLOCK_D)
     mask = offs < D
 
-    x = tl.load(X_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
+    # Block-level base pointer: broadcast row*stride_row to match offs
+    row_base = row * stride_row + offs
+
+    x = tl.load(X_ptr + row_base, mask=mask, other=0.0).to(tl.float32)
     mean = tl.sum(tl.where(mask, x, 0.0), axis=0) / D
     diff = tl.where(mask, x - mean, 0.0)
     var = tl.sum(diff * diff, axis=0) / D
@@ -72,7 +78,7 @@ def _layernorm_add_bwd_kernel(
     x_hat = diff * inv_std
 
     w = tl.load(W_ptr + offs, mask=mask, other=1.0).to(tl.float32)
-    do = tl.load(DO_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
+    do = tl.load(DO_ptr + row_base, mask=mask, other=0.0).to(tl.float32)
 
     # dx_norm = do * w
     dx_norm = do * w
@@ -85,8 +91,8 @@ def _layernorm_add_bwd_kernel(
     # dr = do (residual passes gradient through)
     dr = do
 
-    tl.store(DX_ptr + row * stride_row + offs, dx.to(x.dtype), mask=mask)
-    tl.store(DR_ptr + row * stride_row + offs, dr.to(x.dtype), mask=mask)
+    tl.store(DX_ptr + row_base, dx.to(x.dtype), mask=mask)
+    tl.store(DR_ptr + row_base, dr.to(x.dtype), mask=mask)
     tl.atomic_add(DW_ptr + offs, tl.where(mask, do * x_hat, 0.0))
     tl.atomic_add(DB_ptr + offs, tl.where(mask, do, 0.0))
 

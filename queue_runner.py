@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+from collections import Counter
 import json
 import os
 import pathlib
@@ -32,6 +33,54 @@ RESULTS_DIR = QUEUE_DIR / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _compact_output(output, limit=240):
+    text = " ".join(str(output or "").split())
+    return text[:limit]
+
+
+def classify_result(result):
+    status = result.get("status")
+    text = result.get("parity_output") or result.get("benchmark_output") or ""
+    excerpt = _compact_output(text)
+
+    if status == "APPROVED":
+        return None, ""
+    if status == "REJECTED":
+        return "BENCH_REGRESSION", excerpt
+    if status == "PARTIAL_WIN":
+        return "PARTIAL_BENCH_WIN", excerpt
+
+    lower = text.lower()
+    if "not found" in lower:
+        return "MISSING_ARTIFACT", excerpt
+    if "syntaxerror" in lower or "indentationerror" in lower or "error collecting" in lower or "importtestmodule" in lower:
+        return "IMPORT_OR_SYNTAX_ERROR", excerpt
+    if "triton.compiler.errors" in lower or "compilationerror" in lower:
+        return "TRITON_COMPILE_ERROR", excerpt
+    if "mask argument cannot be block type" in lower or "unsupported ptr type" in lower:
+        return "TRITON_POINTER_ERROR", excerpt
+    if "illegal memory access" in lower or "cuda error" in lower:
+        return "CUDA_RUNTIME_ERROR", excerpt
+    if "save_for_backward can only save variables" in lower or "autograd.function" in lower:
+        return "AUTOGRAD_ERROR", excerpt
+    if "baseline_fn" in text or "keyerror:" in lower:
+        return "BASELINE_OR_TEST_BUG", excerpt
+    if "tensor-likes are not close" in lower:
+        return "NUMERICAL_MISMATCH", excerpt
+    if status == "FAILED_BENCHMARK":
+        return "BENCHMARK_ERROR", excerpt
+    if status == "FAILED_PARITY":
+        return "PARITY_ERROR", excerpt
+    return "UNKNOWN", excerpt
+
+
+def finalize_result(result):
+    category, excerpt = classify_result(result)
+    result["failure_category"] = category
+    result["failure_excerpt"] = excerpt
+    return result
+
+
 def load_pending():
     if not PENDING.exists():
         return []
@@ -39,8 +88,28 @@ def load_pending():
     with open(PENDING) as f:
         for line in f:
             line = line.strip()
-            if line:
-                entries.append(json.loads(line))
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            # Normalize: ensure id, kernel, test, bench fields exist
+            # Handle "name" field (from some agents) and "kernel" field (full path)
+            kernel_raw = e.get("kernel") or e.get("name") or "unknown"
+            # Extract just the kernel name from path like "src/models/utils/kernels/fused_abs.py"
+            kernel_name = pathlib.Path(kernel_raw).stem.replace("fused_", "fused_")
+            if not kernel_name.startswith("fused_"):
+                kernel_name = f"fused_{kernel_name}"
+            e["kernel"] = kernel_name
+            if "id" not in e:
+                # Count existing entries for this kernel
+                existing = sum(1 for x in entries if x.get("kernel") == kernel_name)
+                e["id"] = f"{kernel_name}_{existing + 1:03d}"
+            e.setdefault("test", f"tests/queue/test_{e['kernel']}.py")
+            e.setdefault("bench", f"benchmarks/queue/bench_{e['kernel']}.py")
+            e.setdefault("note", "")
+            entries.append(e)
     return entries
 
 
@@ -137,7 +206,9 @@ def process_entry(entry):
 
     if not passed:
         result["status"] = "FAILED_PARITY"
+        finalize_result(result)
         print(f"  FAILED parity test")
+        print(f"  Category: {result['failure_category']}")
         print(f"  Output: {output[:500]}")
         save_result(entry_id, result)
         return result
@@ -172,6 +243,9 @@ def process_entry(entry):
             print(f"    {shape}: {data['baseline_ms']:.4f} ms -> {data['kernel_ms']:.4f} ms ({data['speedup']:.2f}x) [{status}]")
         print(f"\n  Verdict: {result['status']}")
 
+    finalize_result(result)
+    if result["failure_category"]:
+        print(f"  Category: {result['failure_category']}")
     save_result(entry_id, result)
     return result
 
@@ -201,6 +275,19 @@ def print_summary(results):
     print(f"  FAILED_BENCH:   {len(failed_bench)}")
     print(f"  TOTAL:          {len(results)}")
 
+    categories = Counter()
+    for result in results:
+        category = result.get("failure_category")
+        if category is None and result.get("status") != "APPROVED":
+            category, _ = classify_result(result)
+        if category:
+            categories[category] += 1
+
+    if categories:
+        print(f"\nFailure categories:")
+        for category, count in categories.most_common():
+            print(f"  {category}: {count}")
+
     if approved:
         print(f"\nApproved kernels:")
         for r in approved:
@@ -228,20 +315,20 @@ def main():
         processed_ids = set()
         while True:
             entries = load_pending()
-            new_entries = [e for e in entries if e["id"] not in processed_ids]
+            new_entries = [e for e in entries if e.get("id") not in processed_ids]
             if new_entries:
                 all_results = []
                 remaining = []
                 for entry in entries:
-                    if entry["id"] in processed_ids:
+                    if entry.get("id") in processed_ids:
                         continue
                     result = process_entry(entry)
                     all_results.append(result)
-                    processed_ids.add(entry["id"])
+                    processed_ids.add(entry.get("id"))
                     append_completed(entry, result)
 
                 # Remove processed from pending
-                remaining = [e for e in entries if e["id"] not in processed_ids]
+                remaining = [e for e in entries if e.get("id") not in processed_ids]
                 save_pending(remaining)
 
                 if all_results:

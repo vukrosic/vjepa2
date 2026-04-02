@@ -1,0 +1,27 @@
+{
+  "id": "fused_tanh_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.46s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0421,
+      "kernel_ms": 0.1273,
+      "speedup": 0.331
+    },
+    "vit_h": {
+      "baseline_ms": 0.1001,
+      "kernel_ms": 0.1533,
+      "speedup": 0.653
+    },
+    "small": {
+      "baseline_ms": 0.0277,
+      "kernel_ms": 0.1379,
+      "speedup": 0.201
+    }
+  },
+  "benchmark_output": "vit_l: 0.0421 ms -> 0.1273 ms (0.33x)\nvit_h: 0.1001 ms -> 0.1533 ms (0.65x)\nsmall: 0.0277 ms -> 0.1379 ms (0.20x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0421, \"kernel_ms\": 0.1273, \"speedup\": 0.331}, \"vit_h\": {\"baseline_ms\": 0.1001, \"kernel_ms\": 0.1533, \"speedup\": 0.653}, \"small\": {\"baseline_ms\": 0.0277, \"kernel_ms\": 0.1379, \"speedup\": 0.201}}\n",
+  "timestamp": "2026-04-02T08:25:19.207949",
+  "failure_category": "BENCH_REGRESSION",
+  "failure_excerpt": "......... [100%] 9 passed in 7.46s"
+}

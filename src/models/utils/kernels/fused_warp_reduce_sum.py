@@ -23,7 +23,9 @@ def baseline_fn(x):
 def _warp_reduce_sum_kernel(X, OUT, N, BLOCK: tl.constexpr):
     """Grid: (N // BLOCK + 1,) — each program reduces BLOCK elements."""
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    # Block-level pointer arithmetic
+    offs_base = pid * BLOCK
+    offs = offs_base + tl.arange(0, BLOCK)
     mask = offs < N
 
     val = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)

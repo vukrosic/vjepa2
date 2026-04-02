@@ -46,40 +46,31 @@ def _fused_masked_fill_softmax_fwd(
     row_base = b * stride_b + h * stride_h + n * stride_n
 
     # --- Online softmax: find max, applying mask inline ---
+    # Pure scalar loads for online softmax computation
     m = -float("inf")
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)
-        mask_col = cols < N
-        s = tl.load(SCORES + row_base + cols, mask=mask_col, other=0.0).to(tl.float32)
-        s = s * scale
-        mask_val = tl.load(MASK + mask_base + cols, mask=mask_col, other=0).to(tl.float32)
+    for j in range(N):
+        s = tl.load(SCORES + row_base + j).to(tl.float32) * scale
+        mask_val = tl.load(MASK + mask_base + j).to(tl.float32)
         s = tl.where(mask_val > 0, s, -float("inf"))
         m = tl.where(s > m, s, m)
 
     # --- Accumulate exp sum ---
-    acc = tl.zeros([BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)
-        mask_col = cols < N
-        s = tl.load(SCORES + row_base + cols, mask=mask_col, other=0.0).to(tl.float32)
-        s = s * scale
-        mask_val = tl.load(MASK + mask_base + cols, mask=mask_col, other=0).to(tl.float32)
+    acc = 0.0
+    for j in range(N):
+        s = tl.load(SCORES + row_base + j).to(tl.float32) * scale
+        mask_val = tl.load(MASK + mask_base + j).to(tl.float32)
         # Apply mask BEFORE subtract-m so masked positions get exp(-inf)=0
         s = tl.where(mask_val > 0, s, -float("inf"))
-        s = tl.exp(s - m)
-        acc += tl.where(mask_col, s, 0.0)
-    denom = tl.sum(acc, axis=0)
+        acc += tl.exp(s - m)
+    denom = acc
 
     # --- Normalize and store ---
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)
-        mask_col = cols < N
-        s = tl.load(SCORES + row_base + cols, mask=mask_col, other=0.0).to(tl.float32)
-        s = s * scale
-        mask_val = tl.load(MASK + mask_base + cols, mask=mask_col, other=0).to(tl.float32)
+    for j in range(N):
+        s = tl.load(SCORES + row_base + j).to(tl.float32) * scale
+        mask_val = tl.load(MASK + mask_base + j).to(tl.float32)
         s = tl.where(mask_val > 0, s, -float("inf"))
         s = tl.exp(s - m) / denom
-        tl.store(OUT + row_base + cols, s, mask=mask_col)
+        tl.store(OUT + row_base + j, s)
 
 
 def kernel_fn(scores, mask, scale=1.0):

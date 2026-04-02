@@ -1,0 +1,9 @@
+{
+  "id": "fused_masked_softmax_rope_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n____________________ test_forward_parity[dtype0-vit_small] _____________________\ntests/queue/test_fused_masked_softmax_rope.py:28: in test_forward_parity\n    expected = baseline_fn(x, k, cos_table, sin_table)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_masked_softmax_rope.py:21: in baseline_fn\n    q_rot[..., :D_half] = q[..., :D_half] * cos_table - q[..., D_half:] * sin_table\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   RuntimeError: The size of tensor a (256) must match the size of tensor b (32) at non-singleton dimension 2\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_masked_softmax_rope.py::test_forward_parity[dtype0-vit_small]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 3.21s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:08:30.066952"
+}

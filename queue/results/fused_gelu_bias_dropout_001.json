@@ -1,0 +1,9 @@
+{
+  "id": "fused_gelu_bias_dropout_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "......F\n=================================== FAILURES ===================================\n_________________________ test_inference_parity[vit_l] _________________________\ntests/queue/test_fused_gelu_bias_dropout.py:37: in test_inference_parity\n    torch.testing.assert_close(actual, expected, atol=1e-4, rtol=1e-4)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 8379240 / 8388608 (99.9%)\nE   Greatest absolute difference: 6.701236724853516 at index (0, 913, 851) (up to 0.0001 allowed)\nE   Greatest relative difference: inf at index (0, 10, 510) (up to 0.0001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_gelu_bias_dropout.py::test_inference_parity[vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 passed in 7.93s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:04:25.196885"
+}

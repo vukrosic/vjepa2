@@ -36,17 +36,21 @@ def _fused_rope_fwd(X, COS, SIN, Y, B: tl.constexpr, H: tl.constexpr, N: tl.cons
         offs = tl.arange(0, BLOCK_D // 2)
         mask_e = (d0 + offs) < half
         mask_o = (d0 + half + offs) < D
-        # Load x1, x2 using pure scalar loads (pointer arithmetic is scalar)
-        x1 = tl.load(X + base + d0 + offs, mask=mask_e, other=0.0).to(tl.float32)
-        x2 = tl.load(X + base + d0 + half + offs, mask=mask_o, other=0.0).to(tl.float32)
-        # Load cos, sin using scalar loads
-        cos_vals = tl.load(COS + cos_base + d0 + offs, mask=mask_e, other=0.0).to(tl.float32)
-        sin_vals = tl.load(SIN + cos_base + d0 + offs, mask=mask_e, other=0.0).to(tl.float32)
+        # Block-level pointer arithmetic to avoid scalar+block mask issues
+        x1_ptrs = base + d0 + offs
+        x2_ptrs = base + d0 + half + offs
+        cos_ptrs = cos_base + d0 + offs
+        # Load x1, x2 using block-level pointers
+        x1 = tl.load(X + x1_ptrs, mask=mask_e, other=0.0).to(tl.float32)
+        x2 = tl.load(X + x2_ptrs, mask=mask_o, other=0.0).to(tl.float32)
+        # Load cos, sin using block-level pointers
+        cos_vals = tl.load(COS + cos_ptrs, mask=mask_e, other=0.0).to(tl.float32)
+        sin_vals = tl.load(SIN + cos_ptrs, mask=mask_e, other=0.0).to(tl.float32)
         # Apply rotation: x1' = x1 * cos - x2 * sin, x2' = x1 * sin + x2 * cos
         x1r = x1 * cos_vals - x2 * sin_vals
         x2r = x1 * sin_vals + x2 * cos_vals
-        tl.store(Y + base + d0 + offs, x1r, mask=mask_e)
-        tl.store(Y + base + d0 + half + offs, x2r, mask=mask_o)
+        tl.store(Y + x1_ptrs, x1r, mask=mask_e)
+        tl.store(Y + x2_ptrs, x2r, mask=mask_o)
 
 
 def _precompute_cos_sin(pos, half, device, dtype):

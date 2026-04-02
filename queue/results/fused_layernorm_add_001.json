@@ -1,9 +1,0 @@
-{
-  "id": "fused_layernorm_add_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n____________________ test_forward_parity[dtype0-vit_small] _____________________\ntests/queue/test_fused_layernorm_add.py:21: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 1 / 196608 (0.0%)\nE   Greatest absolute difference: 0.0078125 at index (0, 133, 156) (up to 0.005 allowed)\nE   Greatest relative difference: 0.0009489059448242188 at index (0, 133, 156) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_layernorm_add.py::test_forward_parity[dtype0-vit_small]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.57s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T08:11:08.385335"
-}

@@ -1,9 +1,8 @@
 # How To Improve The V-JEPA 2 Baseline Without Lying To Yourself
 
 This document is the cleaned-up version of the optimization work in this repo.
-The running diary stays in [`OPTIMIZATION_NOTES.md`](/workspace/vjepa2/docs/optimization/OPTIMIZATION_NOTES.md).
-This file is the tutorial: what to optimize, how to test it, how to benchmark
-it fairly, and how to decide whether a change should survive.
+It is the tutorial: what to optimize, how to test it, how to benchmark it
+fairly, and how to decide whether a change should survive.
 
 ## Goal
 

@@ -1,9 +1,0 @@
-{
-  "id": "fused_squeeze_excitation_005",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "......F\n=================================== FAILURES ===================================\n______________________ test_backward_parity[dtype0-vit_l] ______________________\ntests/queue/test_fused_squeeze_excitation.py:38: in test_backward_parity\n    torch.testing.assert_close(x_ker.grad, x.grad, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 2053300 / 2097152 (97.9%)\nE   Greatest absolute difference: 1.150390625 at index (1, 79, 865) (up to 0.005 allowed)\nE   Greatest relative difference: 4.1953125 at index (0, 772, 453) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_squeeze_excitation.py::test_backward_parity[dtype0-vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 passed in 4.61s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:11:48.073607"
-}

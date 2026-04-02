@@ -1,9 +1,0 @@
-{
-  "id": "fused_mlp_block_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-small] _______________________\ntests/queue/test_fused_mlp_block.py:20: in test_forward_parity\n    expected = baseline_fn(x, residual, ln_weight, ln_bias, proj1_weight, proj1_bias)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_mlp_block.py:21: in baseline_fn\n    return projected + residual\n           ^^^^^^^^^^^^^^^^^^^^\nE   RuntimeError: The size of tensor a (1536) must match the size of tensor b (384) at non-singleton dimension 2\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_mlp_block.py::test_forward_parity[dtype0-small]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 3.53s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T08:11:39.135870"
-}

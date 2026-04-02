@@ -1,9 +1,0 @@
-{
-  "id": "fused_l2_distance_003",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": ".F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-medium] ______________________\ntests/queue/test_fused_l2_distance.py:20: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 12 / 1024 (1.2%)\nE   Greatest absolute difference: 0.03125 at index (116,) (up to 0.02 allowed)\nE   Greatest relative difference: 0.0008368492126464844 at index (404,) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_l2_distance.py::test_forward_parity[dtype0-medium]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 1 passed in 5.59s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T07:07:10.661463"
-}

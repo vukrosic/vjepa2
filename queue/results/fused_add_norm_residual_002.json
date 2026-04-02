@@ -1,9 +1,0 @@
-{
-  "id": "fused_add_norm_residual_002",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_add_norm_residual.py:22: in test_forward_parity\n    actual = kernel_fn(x, b1, b2, weight, bias)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_add_norm_residual.py:145: in kernel_fn\n    return FusedAddNormResidual.apply(x, b1, b2, weight, bias, eps)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.12/dist-packages/torch/autograd/function.py:575: in apply\n    return super().apply(*args, **kwargs)  # type: ignore[misc]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_add_norm_residual.py:118: in forward\n    B, D = x.shape\n    ^^^^\nE   ValueError: too many values to unpack (expected 2)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_add_norm_residual.py::test_forward_parity[dtype0-vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 3.42s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T05:57:53.474970"
-}

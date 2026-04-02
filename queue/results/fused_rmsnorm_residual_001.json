@@ -1,9 +1,0 @@
-{
-  "id": "fused_rmsnorm_residual_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "......F\n=================================== FAILURES ===================================\n_______________________ test_backward_parity[vit_small] ________________________\ntests/queue/test_fused_rmsnorm_residual.py:42: in test_backward_parity\n    torch.testing.assert_close(x_ker.grad, x.grad, atol=1e-3, rtol=1e-3)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 175140 / 196608 (89.1%)\nE   Greatest absolute difference: 0.3515142798423767 at index (0, 123, 228) (up to 0.001 allowed)\nE   Greatest relative difference: 1263.0135498046875 at index (0, 144, 106) (up to 0.001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_rmsnorm_residual.py::test_backward_parity[vit_small]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 passed in 6.90s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T08:08:04.259681"
-}

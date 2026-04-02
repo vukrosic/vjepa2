@@ -1,9 +1,0 @@
-{
-  "id": "fused_masked_fill_softmax_002",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n_________________________ test_forward_parity[seq256] __________________________\ntests/queue/test_fused_masked_fill_softmax.py:19: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=ATOL_FP32, rtol=ATOL_FP32)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 1752735 / 2097152 (83.6%)\nE   Greatest absolute difference: 0.006903438828885555 at index (1, 11, 43, 216) (up to 0.0001 allowed)\nE   Greatest relative difference: inf at index (0, 1, 0, 17) (up to 0.0001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_masked_fill_softmax.py::test_forward_parity[seq256]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 4.89s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:08:59.025391"
-}

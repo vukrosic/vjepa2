@@ -1,9 +1,0 @@
-{
-  "id": "fused_add_norm_residual_007",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": ".F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_h] _______________________\ntests/queue/test_fused_add_norm_residual.py:24: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 240 / 5242880 (0.0%)\nE   Greatest absolute difference: 0.0234375 at index (0, 423, 711) (up to 0.01 allowed)\nE   Greatest relative difference: 0.0087432861328125 at index (0, 1875, 608) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_add_norm_residual.py::test_forward_parity[dtype0-vit_h]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 1 passed in 4.46s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:43:16.189232"
-}

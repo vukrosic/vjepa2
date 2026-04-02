@@ -1,9 +1,0 @@
-{
-  "id": "fused_gather_add_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-small] _______________________\ntests/queue/test_fused_gather_add.py:17: in test_forward_parity\n    total_tokens = shape[\"total_tokens\"]\n                   ^^^^^^^^^^^^^^^^^^^^^\nE   KeyError: 'total_tokens'\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_gather_add.py::test_forward_parity[dtype0-small]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 3.56s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:13:49.751972"
-}

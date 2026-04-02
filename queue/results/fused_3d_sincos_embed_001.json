@@ -1,9 +1,0 @@
-{
-  "id": "fused_3d_sincos_embed_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n________________________ test_forward_parity[vit_l_16f] ________________________\ntests/queue/test_fused_3d_sincos_embed.py:11: in test_forward_parity\n    expected = baseline_fn(**shape)\n               ^^^^^^^^^^^^^^^^^^^^\nsrc/models/utils/kernels/fused_3d_sincos_embed.py:14: in baseline_fn\n    assert embed_dim % 6 == 0\n           ^^^^^^^^^^^^^^^^^^\nE   AssertionError\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_3d_sincos_embed.py::test_forward_parity[vit_l_16f]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 2.84s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:08:36.800766"
-}

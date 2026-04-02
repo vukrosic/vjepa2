@@ -30,7 +30,7 @@ Short default-path end-to-end checks remain modest after the retained set:
 `encoder, unmasked 0.994x`, `encoder, masked 0.998x`, `predictor 1.002x`,
 `action-conditioned predictor 1.012x`.
 
-For the full write-up, see [`BLOG.md`](BLOG.md) and
+For the full write-up, see [`docs/optimization/BLOG.md`](docs/optimization/BLOG.md) and
 [`docs/optimization/OPTIMIZATION_ARTICLE.md`](docs/optimization/OPTIMIZATION_ARTICLE.md).
 
 🆕 **[2026-03-16]:** :fire: V-JEPA 2.1 is released :fire: A new familly of models trained with a novel recipe that learns high quality and temporolly consistent dense features !!!
@@ -54,17 +54,6 @@ Rabbat*, Nicolas Ballas*
 [[`Paper`](https://arxiv.org/abs/2506.09985)] [[`Blog`](https://ai.meta.com/blog/v-jepa-2-world-model-benchmarks)] [[`BibTex`](#Citation)]
 
 Official Pytorch codebase for V-JEPA 2, V-JEPA 2-AC, V-JEPA 2.1.
-
-## Kernel Agent Docs
-
-If you are working on kernel queue experiments, read only these files first:
-- `AGENTS.md`
-- `KERNEL_AGENT_INSTRUCTIONS.md`
-- `KERNEL_AGENT_WORKLIST.md`
-- `KERNEL_PRIMOPS.md`
-- `KERNEL_AGENT_STEERING.md` if you need a pasteable prompt
-
-Ignore the historical optimization notes and queue reports unless a human points you at them.
 
 V-JEPA 2 is a self-supervised approach to training video encoders, using internet-scale video data, that attains state-of-the-art performance on motion understanding and human action anticipation tasks. V-JEPA 2-AC is a latent action-conditioned world model post-trained from V-JEPA 2 (using a small amount of robot trajectory interaction data) that solves robot manipulation tasks without environment-specific data collection or task-specific training or calibration.
 

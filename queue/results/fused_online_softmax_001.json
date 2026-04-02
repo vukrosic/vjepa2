@@ -1,9 +1,0 @@
-{
-  "id": "fused_online_softmax_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n_______________________ test_forward_parity[vit_l_short] _______________________\ntests/queue/test_fused_online_softmax.py:14: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=ATOL_FP32, rtol=ATOL_FP32)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 2097152 / 2097152 (100.0%)\nE   Greatest absolute difference: 0.0346560962498188 at index (0, 14, 44, 229) (up to 0.0001 allowed)\nE   Greatest relative difference: 0.9443230032920837 at index (0, 15, 235, 0) (up to 0.0001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_online_softmax.py::test_forward_parity[vit_l_short]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 6.43s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T08:11:44.313341"
-}

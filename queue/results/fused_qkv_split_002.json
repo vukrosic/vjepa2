@@ -1,9 +1,0 @@
-{
-  "id": "fused_qkv_split_002",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "......F\n=================================== FAILURES ===================================\n_________________________ test_backward_parity[vit_l] __________________________\ntests/queue/test_fused_qkv_split.py:41: in test_backward_parity\n    (q_act * grad_q + k_act * grad_k + v_act * grad_v).sum().backward()\n/usr/local/lib/python3.12/dist-packages/torch/_tensor.py:626: in backward\n    torch.autograd.backward(\n/usr/local/lib/python3.12/dist-packages/torch/autograd/__init__.py:347: in backward\n    _engine_run_backward(\n/usr/local/lib/python3.12/dist-packages/torch/autograd/graph.py:823: in _engine_run_backward\n    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass\nE   RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_qkv_split.py::test_backward_parity[vit_l] - Run...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 passed in 5.67s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T07:57:28.880973"
-}

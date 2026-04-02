@@ -1,9 +1,0 @@
-{
-  "id": "fused_token_scatter_001",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "F\n=================================== FAILURES ===================================\n____________________ test_forward_parity[dtype0-small_mask] ____________________\ntests/queue/test_fused_token_scatter.py:22: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 9063 / 602112 (1.5%)\nE   Greatest absolute difference: 5.43359375 at index (0, 269, 6) (up to 0.005 allowed)\nE   Greatest relative difference: 24208.0 at index (0, 269, 125) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_token_scatter.py::test_forward_parity[dtype0-small_mask]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.36s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T08:12:26.474775"
-}

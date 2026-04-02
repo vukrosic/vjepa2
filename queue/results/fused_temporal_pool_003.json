@@ -1,9 +1,0 @@
-{
-  "id": "fused_temporal_pool_003",
-  "status": "FAILED_PARITY",
-  "parity_passed": false,
-  "parity_output": "...F\n=================================== FAILURES ===================================\n___________________ test_forward_parity[dtype1-vit_l_16f_2x] ___________________\ntests/queue/test_fused_temporal_pool.py:18: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 2762722 / 3211264 (86.0%)\nE   Greatest absolute difference: 0.0009765625 at index (0, 2, 80, 430) (up to 1e-05 allowed)\nE   Greatest relative difference: 0.00048804294783622026 at index (1, 2, 148, 933) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_temporal_pool.py::test_forward_parity[dtype1-vit_l_16f_2x]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 3 passed in 5.52s\n",
-  "benchmark": null,
-  "benchmark_output": "",
-  "timestamp": "2026-04-02T06:19:01.675205"
-}

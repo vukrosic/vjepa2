@@ -19,7 +19,7 @@ from typing import Iterable
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS_DIR = ROOT / "queue" / "results"
-DEFAULT_MARKDOWN = ROOT / "QUEUE_TRIAGE.md"
+DEFAULT_MARKDOWN = ROOT / "queue" / "QUEUE_TRIAGE.md"
 ID_SUFFIX_RE = re.compile(r"^(?P<family>.+)_(?P<num>\d{3})$")
 
 
@@ -188,6 +188,8 @@ def top_families(rows: list[ResultRow], limit: int) -> list[tuple[str, int]]:
 def format_markdown(summary: dict, rows: list[ResultRow], limit: int, family_limit: int) -> str:
     lines: list[str] = []
     lines.append("# Queue Triage")
+    lines.append("")
+    lines.append("Human report only. Kernel agents should ignore this file and follow `KERNEL_AGENT_WORKLIST.md`.")
     lines.append("")
     lines.append("## Status Counts")
     for status, count in summary["status_counts"].most_common():

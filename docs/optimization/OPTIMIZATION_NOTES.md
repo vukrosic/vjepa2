@@ -1678,7 +1678,7 @@ That is the right kind of Triton win:
 ## Article Version
 
 For a cleaned-up tutorial version of this work, see
-[`OPTIMIZATION_ARTICLE.md`](/workspace/vjepa2/OPTIMIZATION_ARTICLE.md).
+[`OPTIMIZATION_ARTICLE.md`](/workspace/vjepa2/docs/optimization/OPTIMIZATION_ARTICLE.md).
 
 That file keeps the lessons and results organized by topic.
 This file stays the chronological engineering record.

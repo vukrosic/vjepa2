@@ -1,212 +1,128 @@
-# V-JEPA 2 Kernel Factory — Guarded Instructions
+# Kernel Agent Runbook
 
-You are an optimization agent for V-JEPA 2. Your job is to produce kernel experiments that are valid, queueable, and worth benchmarking.
+This is the canonical execution doc for kernel agents.
 
-The queue is not the place to discover syntax errors, rank mistakes, or broken Triton pointer math. Do that work locally first.
+Read only these files before you work:
 
-Read these files before starting:
-- `KERNEL_AGENT_STEERING.md`
-- `KERNEL_PRIMOPS.md`
-- `queue_runner.py`
+1. `KERNEL_AGENT_INSTRUCTIONS.md`
+2. `KERNEL_AGENT_WORKLIST.md`
+3. `KERNEL_PRIMOPS.md`
 
-## Setup
+Ignore every other markdown file unless a human explicitly points you at it.
 
-```bash
-cd /workspace/vjepa2
-```
+## Mission
 
-If you are working from another machine, sync the repo and run the queue there. Keep paths and commands repo-relative.
+Produce one small, correct, reviewable kernel change.
 
-## Non-Negotiable Rules
+Do not optimize for volume.
+Do not create speculative families.
+Do not touch queue state casually.
 
-1. Do not append to `queue/pending.jsonl` until the kernel, test, and benchmark import cleanly and a representative local parity case passes.
-2. Do not guess tensor ranks, shapes, dtypes, or broadcast semantics. Read the target source, test, and any nearby result files first.
-3. Keep the baseline exact. If the source op is unclear, stop and read more code.
-4. Guard everything. If the kernel cannot safely handle a shape, dtype, device, or layout, fall back to baseline.
-5. Do not fake backward support. If the op is on the training path, either implement backward correctly for all required grads or use a fallback path that preserves autograd correctness.
-6. Do not spray variants. Get one version correct first. Only create launch-config variants after parity passes and the base kernel has a plausible path to speedup.
-7. Small elementwise kernels are guilty until proven useful. If eager PyTorch is already fast enough, skip the Triton version.
+## Hard Rules
 
-## Quality Bar
+1. Work only on families listed in `KERNEL_AGENT_WORKLIST.md`.
+2. Do not hand-edit `queue/pending.jsonl`, `queue/completed.jsonl`, or `queue/results/*.json`.
+3. Do not invent a new kernel family unless a human explicitly asks.
+4. Keep `baseline_fn()` exact and boring.
+5. Keep `kernel_fn()` guarded and safe.
+6. If backward matters, prove it or fall back.
+7. One kernel family at a time. No variants until the base version is correct.
+8. Do not use `--skip-parity` unless a human explicitly tells you to.
 
-Your goal is not "more kernels per hour". Your goal is:
-- fewer invalid queue entries
-- fewer Triton compile/runtime failures
-- fewer parity mismatches caused by bad baselines
-- more `APPROVED` or at least `PARTIAL_WIN` results
+## Exact Workflow
 
-If you are unsure whether a kernel is worth attempting, prefer not enqueueing it.
+1. Read the target source op, kernel, test, benchmark, and recent same-family result files.
+2. Confirm shape, dtype, layout, and backward assumptions in plain language.
+3. Implement the smallest safe fix.
+4. Run local validation.
+5. Enqueue only through `scripts/enqueue_kernel.py`, and only after validation passes.
 
-## Approved Kernel Families
+## Validation
 
-Stay inside the safe families in `KERNEL_PRIMOPS.md` unless you have strong evidence the new pattern is both correct and worthwhile.
-
-Good first choices:
-- contiguous elementwise kernels that remove a full read/write pass
-- row-wise reductions and normalization helpers
-- layout transforms such as QKV split / transpose / reshape copy kernels
-- stable positional encoding kernels
-- optimizer / EMA style pointwise-update kernels on large tensors
-
-Use extra caution with:
-- gather/scatter kernels
-- masked softmax
-- dropout or RNG-bearing kernels
-- fused kernels that require custom backward
-- anything that mixes indexing, reduction, and layout transforms in one pass
-
-## Workflow
-
-For each candidate:
-
-1. Read the source op you are replacing.
-2. Read the queue test and benchmark if they exist already.
-3. Read nearby entries in `queue/results/` for the same family.
-4. Decide whether the op is actually worth fusing.
-5. Choose the smallest safe kernel family that matches the operation.
-6. Write the kernel file in `src/models/utils/kernels/`.
-7. Write the parity test in `tests/queue/`.
-8. Write the benchmark in `benchmarks/queue/`.
-9. Run local validation before enqueueing.
-10. Only then enqueue it with the submission helper.
-
-## Required Exports
-
-Every kernel file must export:
-- `kernel_fn(*args)` — optimized path
-- `baseline_fn(*args)` — exact PyTorch reference
-- `can_use_kernel(*args) -> bool` — strict applicability guard
-- `SHAPES` — realistic test shapes
-
-Additional requirements:
-- `kernel_fn()` must fall back to `baseline_fn()` when unsupported.
-- If you use `torch.autograd.Function`, save only valid tensors and simple metadata.
-- Do not return `None` for gradients that are required on the training path.
-
-## File Conventions
-
-### Kernel: `src/models/utils/kernels/KERNELNAME.py`
-
-Requirements:
-- exact baseline
-- conservative Triton launch config
-- explicit dtype / contiguity checks
-- simple pointer arithmetic
-- fp32 accumulation for norms, softmax, and similar reductions
-- fallback on unsupported inputs
-
-### Test: `tests/queue/test_KERNELNAME.py`
-
-At minimum:
-- import smoke
-- forward parity
-- backward parity when the op is used in training and gradients matter
-
-Use realistic shapes from the actual target path. Do not invent shapes that make the kernel look better but do not represent the model.
-
-### Benchmark: `benchmarks/queue/bench_KERNELNAME.py`
-
-Requirements:
-- CUDA timing with warmup
-- same shapes as the parity test or a justified subset
-- machine-readable `BENCH_RESULT=...`
-- no benchmark until parity is already passing locally
-
-## Local Validation Gate
-
-Before enqueueing, run:
+Default validation:
 
 ```bash
 python scripts/prequeue_validate.py --kernel KERNELNAME --run-parity
 ```
 
-If the benchmark is likely to matter and parity passes, you may also run:
+If parity passes and the benchmark matters:
 
 ```bash
 python scripts/prequeue_validate.py --kernel KERNELNAME --run-parity --run-bench
 ```
 
-Do not enqueue if any of the following are true:
-- kernel, test, or benchmark file fails to import
-- representative parity fails
-- backward parity fails when required
-- the benchmark is obviously worse than eager PyTorch on all realistic shapes
+If this environment does not have `pytest`, that is not permission to fake parity.
+In that case:
 
-## Triton Rules
+- do import smoke
+- do direct local function smoke if possible
+- leave the change ready for a real parity run
+- do not enqueue unless a human explicitly approves the exception
 
-These are the failure patterns already showing up in `queue/results/`:
+## Status Names
 
-- `tl.arange` must use `tl.constexpr` sizes.
-- Do not use block masks with scalar pointers.
-- Do not use scalar pointers where block pointers are required.
-- Initialize every accumulator before entering a loop.
-- Keep loop-carried state explicit.
-- Validate index tensor dtype and bounds before using gather/scatter logic.
-- Prefer row-wise or contiguous kernels over opaque flattened indexing when possible.
-- If the kernel shape logic is hard to explain in a few lines, it is probably too risky for a first attempt.
+Read queue status names literally:
 
-## Baseline and Test Hygiene
+- `PARITY_IMPORT_OR_SYNTAX_ERROR`: the files do not import cleanly
+- `PARITY_BASELINE_OR_TEST_BUG`: the reference or test is wrong
+- `PARITY_TRITON_COMPILE_ERROR`: the Triton kernel does not compile
+- `PARITY_TRITON_POINTER_ERROR`: invalid pointer or mask usage
+- `PARITY_NUMERICAL_MISMATCH`: outputs or gradients are wrong
+- `BENCHMARK_REGRESSION`: parity passed but the kernel is slower
+- `BENCHMARK_PARTIAL_WIN`: mixed result
+- `BENCHMARK_WIN`: real win
 
-Many failures in `queue/results/` are baseline or test mistakes, not kernel-only mistakes.
+## Definition Of Done
 
-Do this explicitly:
-- run the baseline path by itself on one representative shape
-- verify the output shape before comparing values
-- make divisibility assumptions explicit
-- check rank assumptions in both baseline and kernel
-- confirm the benchmark is measuring the intended operation
+A kernel is ready only if all of these are true:
 
-## When Not To Write a Kernel
+- kernel, test, and benchmark import cleanly
+- baseline matches the source operation
+- representative forward parity passes
+- backward parity passes when required
+- benchmark is honest
+- unsupported inputs fall back safely
 
-Skip the kernel if:
-- PyTorch already uses a fused or highly optimized path
-- the op is tiny and launch overhead will dominate
-- correctness depends on a custom backward you cannot implement safely
-- the fusion combines too many hard primitives at once
-- the expected win is speculative and there is no clear memory-traffic reduction
+## Allowed File Touches
 
-## Queue Strategy
+Normal kernel work should stay inside:
+- `src/models/utils/kernels/`
+- `tests/queue/`
+- `benchmarks/queue/`
 
-Prefer a small number of high-confidence submissions over a large number of noisy ones.
+You may also use:
+- `scripts/prequeue_validate.py`
+- `scripts/enqueue_kernel.py`
 
-Priority targets:
-- `fused_add_norm_residual`
-- `fused_rms_residual`
-- `fused_gelu_linear`
-- `fused_silu_mul`
-- `fused_qkv_split`
-- `fused_rope_apply`
-- `fused_online_softmax`
+Do not rewrite queue infrastructure or broad repo docs unless the task is specifically about workflow cleanup.
 
-Lower-priority or usually weak targets:
-- tiny unary elementwise ops submitted as standalone kernels
-- speculative mega-fusions that combine layout, reduction, RNG, and backward logic
-- variants submitted before the base version proves correctness
+## Preferred Fix Style
 
-## Queue Entry Format
+Prefer this order:
+1. Exact reference-backed helper
+2. Safe guarded Triton kernel
+3. Faster variant after parity is already proven
 
-Append to `queue/pending.jsonl` only through the submission helper after validation:
+For broken or fragile kernels, a correct fallback-backed implementation is better than a broken Triton attempt.
+
+## Stop List
+
+Do not spend time on:
+- tiny standalone unary or binary ops
+- speculative mega-fusions
+- kernels that already benchmark slower than eager on realistic shapes
+- custom backward work you cannot prove correct
+
+## Queue Submission
+
+When a kernel is actually ready:
 
 ```bash
 python scripts/enqueue_kernel.py \
-  --kernel fused_example \
-  --description "Short, exact description of the fusion" \
-  --target-file src/models/utils/modules.py \
-  --target-lines 100-120
+  --kernel KERNELNAME \
+  --description "Short exact description" \
+  --target-file path/to/source.py \
+  --target-lines START-END
 ```
 
-## Final Checklist
-
-Before you enqueue, all of these must be true:
-
-- kernel/test/bench import cleanly
-- baseline is exact
-- representative parity passes locally
-- backward parity passes if needed
-- `can_use_kernel()` is strict
-- unsupported cases fall back safely
-- the benchmark has a realistic chance to win
-- the queue entry description is specific and truthful
-- the experiment is enqueued via `scripts/enqueue_kernel.py`, not by manual file editing
-
-Go slower. Submit better experiments.
+If you are not sure whether a submission is ready, stop before enqueueing.

@@ -312,4 +312,4 @@ Each retained optimization has a corresponding parity test that verifies exact n
 | AC RoPE attention training (F+B) | **1.21x** | Triton + autograd |
 | AC RoPE attention inference | **1.08x** | Triton kernel |
 
-The code is at [github.com/vukrosic/vjepa2](https://github.com/vukrosic/vjepa2). The optimization article and engineering diary are in the repo as `OPTIMIZATION_ARTICLE.md` and `OPTIMIZATION_NOTES.md`.
+The code is at [github.com/vukrosic/vjepa2](https://github.com/vukrosic/vjepa2). The optimization article and engineering diary are in the repo under `docs/optimization/OPTIMIZATION_ARTICLE.md` and `docs/optimization/OPTIMIZATION_NOTES.md`.

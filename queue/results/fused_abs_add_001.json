@@ -1,0 +1,11 @@
+{
+  "id": "fused_abs_add_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "......F\n=================================== FAILURES ===================================\n_________________________ test_backward_parity[vit_l] __________________________\ntests/queue/test_fused_abs_add.py:37: in test_backward_parity\n    torch.testing.assert_close(x2.grad, x1.grad, atol=1e-3, rtol=1e-3)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 3 / 8388608 (0.0%)\nE   Greatest absolute difference: 0.8314712643623352 at index (1, 442, 1618) (up to 0.001 allowed)\nE   Greatest relative difference: inf at index (1, 234, 2526) (up to 0.001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_abs_add.py::test_backward_parity[vit_l] - Asser...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 passed in 7.28s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T08:34:36.745764",
+  "failure_category": "NUMERICAL_MISMATCH",
+  "failure_excerpt": "......F =================================== FAILURES =================================== _________________________ test_backward_parity[vit_l] __________________________ tests/queue/test_fused_abs_add.py:37: in test_backward_parity torch.te"
+}

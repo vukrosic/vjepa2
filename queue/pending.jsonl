@@ -143,3 +143,45 @@
 {"type": "kernel", "name": "fused_neg_relu", "test": "tests/queue/test_fused_neg_relu.py", "bench": "benchmarks/queue/bench_fused_neg_relu.py", "kernel": "src/models/utils/kernels/fused_neg_relu.py", "status": "pending", "scalar_loads": true}
 {"type": "kernel", "name": "fused_exp_relu", "test": "tests/queue/test_fused_exp_relu.py", "bench": "benchmarks/queue/bench_fused_exp_relu.py", "kernel": "src/models/utils/kernels/fused_exp_relu.py", "status": "pending", "scalar_loads": true}
 {"type": "kernel", "name": "fused_log_relu", "test": "tests/queue/test_fused_log_relu.py", "bench": "benchmarks/queue/bench_fused_log_relu.py", "kernel": "src/models/utils/kernels/fused_log_relu.py", "status": "pending", "scalar_loads": true}
+{"kernel": "fused_mul_scalar", "status": "pending", "priority": "medium"}
+{"kernel": "fused_add_scalar", "status": "pending", "priority": "medium"}
+{"kernel": "fused_pow_scalar", "status": "pending", "priority": "medium"}
+{"kernel": "fused_add_tensor", "status": "pending", "priority": "medium"}
+{"kernel": "fused_sub_tensor", "status": "pending", "priority": "medium"}
+{"kernel": "fused_mul_tensor", "status": "pending", "priority": "medium"}
+{"kernel": "fused_div_tensor", "status": "pending", "priority": "medium"}
+{"kernel": "fused_gelu_exact", "status": "pending", "priority": "high"}
+{"kernel": "fused_softmax", "status": "pending", "priority": "high"}
+{"kernel": "fused_log_softmax", "status": "pending", "priority": "high"}
+{"kernel": "fused_row_mean", "status": "pending", "priority": "medium"}
+{"kernel": "fused_row_sum", "status": "pending", "priority": "medium"}
+{"kernel": "fused_row_rms", "status": "pending", "priority": "medium"}
+{"kernel": "fused_batch_norm_1d", "status": "pending", "priority": "high"}
+{"kernel": "fused_hardswish", "status": "pending", "priority": "medium"}
+{"kernel": "fused_gelu_tanh", "status": "pending", "priority": "high"}
+{"kernel": "fused_smoothstep", "status": "pending", "priority": "low"}
+{"kernel": "fused_gumbel_softmax", "status": "pending", "priority": "medium"}
+{"kernel": "fused_glu", "status": "pending", "priority": "medium"}
+{"kernel": "fused_pixel_norm", "status": "pending", "priority": "medium"}
+{"kernel": "fused_group_norm", "status": "pending", "priority": "high"}
+{"kernel": "fused_channel_norm", "status": "pending", "priority": "medium"}
+{"kernel": "fused_sum_square", "status": "pending", "priority": "medium"}
+{"kernel": "fused_silu_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_swish_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_mish_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_tanh_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_normalize", "status": "pending", "priority": "medium"}
+{"kernel": "fused_relu6_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_leaky_relu_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_elu_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_selu_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_hardtanh_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_softmin_v2", "status": "pending", "priority": "low"}
+{"kernel": "fused_mish_hardswish", "status": "pending", "priority": "low"}
+{"kernel": "fused_gelu_quick", "status": "pending", "priority": "medium"}
+{"kernel": "fused_gelu_fast", "status": "pending", "priority": "medium"}
+{"kernel": "fused_elu_silu", "status": "pending", "priority": "medium"}
+{"kernel": "fused_soft_argmax", "status": "pending", "priority": "low"}
+{"kernel": "fused_hard_swish_v2", "status": "pending", "priority": "medium"}
+{"kernel": "fused_soft_plus", "status": "pending", "priority": "medium"}
+{"kernel": "fused_swish_v3", "status": "pending", "priority": "medium"}

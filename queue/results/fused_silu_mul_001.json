@@ -1,0 +1,9 @@
+{
+  "id": "fused_silu_mul_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n______________________ test_forward_parity[dtype0-vit_l] _______________________\ntests/queue/test_fused_silu_mul.py:21: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=atol, rtol=0)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 29 / 5591040 (0.0%)\nE   Greatest absolute difference: 0.0078125 at index (0, 25, 962) (up to 0.005 allowed)\nE   Greatest relative difference: 0.000972747802734375 at index (0, 212, 949) (up to 0 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_silu_mul.py::test_forward_parity[dtype0-vit_l]\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.25s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T05:34:16.869003"
+}

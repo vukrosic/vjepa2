@@ -1,0 +1,25 @@
+{
+  "id": "fused_layer_scale_001",
+  "status": "REJECTED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.88s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0641,
+      "kernel_ms": 0.1604,
+      "speedup": 0.399
+    },
+    "vit_h": {
+      "baseline_ms": 0.0679,
+      "kernel_ms": 0.1369,
+      "speedup": 0.496
+    },
+    "small": {
+      "baseline_ms": 0.087,
+      "kernel_ms": 0.1377,
+      "speedup": 0.632
+    }
+  },
+  "benchmark_output": "vit_l: 0.0641 ms -> 0.1604 ms (0.40x)\nvit_h: 0.0679 ms -> 0.1369 ms (0.50x)\nsmall: 0.0870 ms -> 0.1377 ms (0.63x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0641, \"kernel_ms\": 0.1604, \"speedup\": 0.399}, \"vit_h\": {\"baseline_ms\": 0.0679, \"kernel_ms\": 0.1369, \"speedup\": 0.496}, \"small\": {\"baseline_ms\": 0.087, \"kernel_ms\": 0.1377, \"speedup\": 0.632}}\n",
+  "timestamp": "2026-04-02T05:36:07.013281"
+}

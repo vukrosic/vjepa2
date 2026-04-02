@@ -39,7 +39,7 @@ def _lp_loss_kernel(
     elif loss_exp == 2.0:
         val = abs_diff * abs_diff
     else:
-        val = tl.math.pow(abs_diff, loss_exp)
+        val = abs_diff ** loss_exp
 
     # Masked sum
     val = tl.where(mask, val, 0.0)

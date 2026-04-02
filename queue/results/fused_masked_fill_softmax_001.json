@@ -1,0 +1,9 @@
+{
+  "id": "fused_masked_fill_softmax_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "\n==================================== ERRORS ====================================\n________ ERROR collecting tests/queue/test_fused_masked_fill_softmax.py ________\nImportError while importing test module '/workspace/vjepa2/tests/queue/test_fused_masked_fill_softmax.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests/queue/test_fused_masked_fill_softmax.py:4: in <module>\n    from src.models.utils.kernels.fused_masked_fill_softmax import kernel_fn, baseline_fn, SHAPES\nE   ModuleNotFoundError: No module named 'src.models.utils.kernels.fused_masked_fill_softmax'\n=========================== short test summary info ============================\nERROR tests/queue/test_fused_masked_fill_softmax.py\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 2.82s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T05:37:04.666543"
+}

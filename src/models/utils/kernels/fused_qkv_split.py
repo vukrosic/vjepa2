@@ -109,6 +109,7 @@ def can_use_kernel(qkv_linear, B, N, H, D):
 # ViT-H: dim=1280, num_heads=16, head_dim=80 — head_dim=80 > 64, use BLOCK_D=128
 SHAPES = {
     "vit_l": {"qkv_linear": (2, 1024, 3072), "B": 2, "N": 1024, "H": 16, "D": 64},
-    "vit_s": {"qkv_linear": (2, 256, 1152), "B": 2, "N": 256, "H": 12, "D": 64},
+    # 256 * 3 * 12 * 64 = 589824 = 256 * 2304
+    "vit_s": {"qkv_linear": (2, 256, 2304), "B": 2, "N": 256, "H": 12, "D": 64},
     "vit_b": {"qkv_linear": (4, 512, 2304), "B": 4, "N": 512, "H": 12, "D": 64},
 }

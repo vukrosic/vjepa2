@@ -1,0 +1,25 @@
+{
+  "id": "fused_rms_norm_001",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.25s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.2674,
+      "kernel_ms": 0.1374,
+      "speedup": 1.947
+    },
+    "vit_h": {
+      "baseline_ms": 0.2667,
+      "kernel_ms": 0.1385,
+      "speedup": 1.926
+    },
+    "small": {
+      "baseline_ms": 0.265,
+      "kernel_ms": 0.1367,
+      "speedup": 1.939
+    }
+  },
+  "benchmark_output": "vit_l: 0.2674 ms -> 0.1374 ms (1.95x)\nvit_h: 0.2667 ms -> 0.1385 ms (1.93x)\nsmall: 0.2650 ms -> 0.1367 ms (1.94x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.2674, \"kernel_ms\": 0.1374, \"speedup\": 1.947}, \"vit_h\": {\"baseline_ms\": 0.2667, \"kernel_ms\": 0.1385, \"speedup\": 1.926}, \"small\": {\"baseline_ms\": 0.265, \"kernel_ms\": 0.1367, \"speedup\": 1.939}}\n",
+  "timestamp": "2026-04-02T05:35:32.516121"
+}

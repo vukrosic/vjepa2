@@ -9,13 +9,23 @@ Frequency: 2x per block x 24-32 blocks = 48-64 calls per forward pass.
 import torch
 import triton
 import triton.language as tl
-from timm.models.layers import drop_path as timm_drop_path
+
+
+def _timm_drop_path_gpu(x, drop_prob, training):
+    """Inline drop_path implementation (matches timm behavior)."""
+    if drop_prob == 0.0 or not training:
+        return x
+    keep_prob = 1.0 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    mask = torch.empty(shape, dtype=torch.bool, device=x.device).bernoulli_(keep_prob)
+    x = x / keep_prob
+    return x * mask
 
 
 # --- BASELINE (exact copy from source) ---
 def baseline_fn(x, y, drop_prob, training):
     """x + drop_path(y) where drop_path uses per-sample stochastic depth."""
-    return x + timm_drop_path(y, drop_prob=drop_prob, training=training)
+    return x + _timm_drop_path_gpu(y, drop_prob=drop_prob, training=training)
 
 
 # --- KERNEL ---

@@ -1,0 +1,9 @@
+{
+  "id": "fused_rope_apply_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "F\n=================================== FAILURES ===================================\n_________________________ test_forward_parity[vit_l_d] _________________________\ntests/queue/test_fused_rope_apply.py:18: in test_forward_parity\n    torch.testing.assert_close(actual, expected, atol=ATOL_FP32, rtol=ATOL_FP32)\nE   AssertionError: Tensor-likes are not close!\nE   \nE   Mismatched elements: 1 / 2097152 (0.0%)\nE   Greatest absolute difference: 0.00010849162936210632 at index (0, 6, 885, 33) (up to 0.0001 allowed)\nE   Greatest relative difference: 0.009015381336212158 at index (0, 6, 885, 33) (up to 0.0001 allowed)\n=========================== short test summary info ============================\nFAILED tests/queue/test_fused_rope_apply.py::test_forward_parity[vit_l_d] - A...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed in 5.66s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T05:36:22.285597"
+}

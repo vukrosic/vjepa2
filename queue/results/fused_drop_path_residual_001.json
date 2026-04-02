@@ -1,0 +1,9 @@
+{
+  "id": "fused_drop_path_residual_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "\n==================================== ERRORS ====================================\n________ ERROR collecting tests/queue/test_fused_drop_path_residual.py _________\nImportError while importing test module '/workspace/vjepa2/tests/queue/test_fused_drop_path_residual.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests/queue/test_fused_drop_path_residual.py:6: in <module>\n    from src.models.utils.kernels.fused_drop_path_residual import kernel_fn, baseline_fn, SHAPES\nsrc/models/utils/kernels/fused_drop_path_residual.py:12: in <module>\n    from timm.models.layers import drop_path as timm_drop_path\nE   ModuleNotFoundError: No module named 'timm'\n=========================== short test summary info ============================\nERROR tests/queue/test_fused_drop_path_residual.py\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 2.71s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T05:35:08.199405"
+}

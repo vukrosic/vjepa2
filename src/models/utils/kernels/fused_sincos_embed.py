@@ -54,7 +54,7 @@ def _sincos_embed_kernel(
     mask_d = offs_d < half_dim
 
     # omega = 1 / temperature^(d / half_dim)
-    omega = 1.0 / tl.math.pow(temperature, offs_d.to(tl.float32) / half_dim)
+    omega = 1.0 / (temperature ** (offs_d.to(tl.float32) / half_dim))
 
     freq = pos_val * omega  # [half_dim]
 

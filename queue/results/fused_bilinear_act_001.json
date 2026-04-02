@@ -1,0 +1,25 @@
+{
+  "id": "fused_bilinear_act_001",
+  "status": "PARTIAL_WIN",
+  "parity_passed": true,
+  "parity_output": ".........                                                                [100%]\n9 passed in 7.35s\n",
+  "benchmark": {
+    "vit_l": {
+      "baseline_ms": 0.0719,
+      "kernel_ms": 0.0988,
+      "speedup": 0.728
+    },
+    "vit_h": {
+      "baseline_ms": 0.1835,
+      "kernel_ms": 0.1139,
+      "speedup": 1.611
+    },
+    "small": {
+      "baseline_ms": 0.0587,
+      "kernel_ms": 0.1173,
+      "speedup": 0.501
+    }
+  },
+  "benchmark_output": "vit_l: 0.0719 ms -> 0.0988 ms (0.73x)\nvit_h: 0.1835 ms -> 0.1139 ms (1.61x)\nsmall: 0.0587 ms -> 0.1173 ms (0.50x)\nBENCH_RESULT={\"vit_l\": {\"baseline_ms\": 0.0719, \"kernel_ms\": 0.0988, \"speedup\": 0.728}, \"vit_h\": {\"baseline_ms\": 0.1835, \"kernel_ms\": 0.1139, \"speedup\": 1.611}, \"small\": {\"baseline_ms\": 0.0587, \"kernel_ms\": 0.1173, \"speedup\": 0.501}}\n",
+  "timestamp": "2026-04-02T05:36:41.780602"
+}

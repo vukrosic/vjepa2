@@ -1,0 +1,25 @@
+{
+  "id": "fused_gradient_clip_001",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 6.46s\n",
+  "benchmark": {
+    "attn_weight": {
+      "baseline_ms": 0.4274,
+      "kernel_ms": 0.304,
+      "speedup": 1.406
+    },
+    "mlp_weight": {
+      "baseline_ms": 0.4292,
+      "kernel_ms": 0.2543,
+      "speedup": 1.688
+    },
+    "vit_h_weight": {
+      "baseline_ms": 0.4101,
+      "kernel_ms": 0.2643,
+      "speedup": 1.551
+    }
+  },
+  "benchmark_output": "attn_weight: 0.4274 ms -> 0.3040 ms (1.41x)\nmlp_weight: 0.4292 ms -> 0.2543 ms (1.69x)\nvit_h_weight: 0.4101 ms -> 0.2643 ms (1.55x)\nBENCH_RESULT={\"attn_weight\": {\"baseline_ms\": 0.4274, \"kernel_ms\": 0.304, \"speedup\": 1.406}, \"mlp_weight\": {\"baseline_ms\": 0.4292, \"kernel_ms\": 0.2543, \"speedup\": 1.688}, \"vit_h_weight\": {\"baseline_ms\": 0.4101, \"kernel_ms\": 0.2643, \"speedup\": 1.551}}\n",
+  "timestamp": "2026-04-02T05:37:08.813234"
+}

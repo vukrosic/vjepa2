@@ -48,16 +48,58 @@ def _attn_transpose_kernel(
     tl.store(Y_ptr + dst_off + offs_d, x, mask=mask_d)
 
 
+@triton.jit
+def _attn_transpose_bwd_kernel(
+    DY_ptr, DX_ptr,
+    B, N, H,
+    D: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Backward: reshape [B, N, H*D] -> [B, H, N, D] via transpose."""
+    pid = tl.program_id(0)
+    h_idx = pid % H
+    n_idx = (pid // H) % N
+    b_idx = pid // (H * N)
+
+    offs_d = tl.arange(0, BLOCK_D)
+    mask_d = offs_d < D
+
+    src_off = b_idx * N * H * D + n_idx * H * D + h_idx * D
+    dst_off = b_idx * H * N * D + h_idx * N * D + n_idx * D
+
+    dy = tl.load(DY_ptr + src_off + offs_d, mask=mask_d)
+    tl.store(DX_ptr + dst_off + offs_d, dy, mask=mask_d)
+
+
+class FusedAttnTranspose(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, B, N, H, D):
+        x_c = x.contiguous()
+        y = torch.empty(B, N, H * D, dtype=x_c.dtype, device=x_c.device)
+        BLOCK_D = triton.next_power_of_2(D)
+        _attn_transpose_kernel[(B * N * H,)](
+            x_c, y, B, N, H, D=D, BLOCK_D=BLOCK_D,
+            num_warps=min(8, max(1, BLOCK_D // 32)),
+        )
+        ctx.save_for_backward((B, N, H, D))
+        return y
+
+    @staticmethod
+    def backward(ctx, dy):
+        B, N, H, D = ctx.saved_tensors
+        B, N, H, D = int(B), int(N), int(H), int(D)
+        dx = torch.empty(B, H, N, D, dtype=dy.dtype, device=dy.device)
+        BLOCK_D = triton.next_power_of_2(D)
+        _attn_transpose_bwd_kernel[(B * N * H,)](
+            dy, dx, B, N, H, D=D, BLOCK_D=BLOCK_D,
+            num_warps=min(8, max(1, BLOCK_D // 32)),
+        )
+        return dx, None, None, None, None
+
+
 def kernel_fn(x, B, N, H, D):
     """x: [B, H, N, D] -> [B, N, H*D] contiguous."""
-    x_c = x.contiguous()
-    y = torch.empty(B, N, H * D, dtype=x_c.dtype, device=x_c.device)
-    BLOCK_D = triton.next_power_of_2(D)
-    _attn_transpose_kernel[(B * N * H,)](
-        x_c, y, B, N, H, D=D, BLOCK_D=BLOCK_D,
-        num_warps=min(8, max(1, BLOCK_D // 32)),
-    )
-    return y
+    return FusedAttnTranspose.apply(x, B, N, H, D)
 
 
 def can_use_kernel(x, B, N, H, D):

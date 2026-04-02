@@ -1,0 +1,25 @@
+{
+  "id": "fused_ema_update_001",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "............                                                             [100%]\n12 passed in 6.89s\n",
+  "benchmark": {
+    "attn_weight": {
+      "baseline_ms": 0.05,
+      "kernel_ms": 0.0495,
+      "speedup": 1.009
+    },
+    "mlp_weight": {
+      "baseline_ms": 0.0527,
+      "kernel_ms": 0.0497,
+      "speedup": 1.061
+    },
+    "large_linear": {
+      "baseline_ms": 0.0803,
+      "kernel_ms": 0.0733,
+      "speedup": 1.095
+    }
+  },
+  "benchmark_output": "attn_weight: 0.0500 ms -> 0.0495 ms (1.01x)\nmlp_weight: 0.0527 ms -> 0.0497 ms (1.06x)\nlarge_linear: 0.0803 ms -> 0.0733 ms (1.10x)\nBENCH_RESULT={\"attn_weight\": {\"baseline_ms\": 0.05, \"kernel_ms\": 0.0495, \"speedup\": 1.009}, \"mlp_weight\": {\"baseline_ms\": 0.0527, \"kernel_ms\": 0.0497, \"speedup\": 1.061}, \"large_linear\": {\"baseline_ms\": 0.0803, \"kernel_ms\": 0.0733, \"speedup\": 1.095}}\n",
+  "timestamp": "2026-04-02T05:35:18.711150"
+}

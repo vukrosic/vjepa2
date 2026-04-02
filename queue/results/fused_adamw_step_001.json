@@ -1,0 +1,25 @@
+{
+  "id": "fused_adamw_step_001",
+  "status": "APPROVED",
+  "parity_passed": true,
+  "parity_output": "...                                                                      [100%]\n3 passed in 6.60s\n",
+  "benchmark": {
+    "attn_proj": {
+      "baseline_ms": 0.2836,
+      "kernel_ms": 0.0731,
+      "speedup": 3.878
+    },
+    "mlp_fc": {
+      "baseline_ms": 0.4427,
+      "kernel_ms": 0.138,
+      "speedup": 3.208
+    },
+    "vit_h_attn": {
+      "baseline_ms": 0.2956,
+      "kernel_ms": 0.0734,
+      "speedup": 4.03
+    }
+  },
+  "benchmark_output": "attn_proj: 0.2836 ms -> 0.0731 ms (3.88x)\nmlp_fc: 0.4427 ms -> 0.1380 ms (3.21x)\nvit_h_attn: 0.2956 ms -> 0.0734 ms (4.03x)\nBENCH_RESULT={\"attn_proj\": {\"baseline_ms\": 0.2836, \"kernel_ms\": 0.0731, \"speedup\": 3.878}, \"mlp_fc\": {\"baseline_ms\": 0.4427, \"kernel_ms\": 0.138, \"speedup\": 3.208}, \"vit_h_attn\": {\"baseline_ms\": 0.2956, \"kernel_ms\": 0.0734, \"speedup\": 4.03}}\n",
+  "timestamp": "2026-04-02T05:37:24.495275"
+}

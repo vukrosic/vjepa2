@@ -1,0 +1,9 @@
+{
+  "id": "fused_gather_add_001",
+  "status": "FAILED_PARITY",
+  "parity_passed": false,
+  "parity_output": "\n==================================== ERRORS ====================================\n____________ ERROR collecting tests/queue/test_fused_gather_add.py _____________\nImportError while importing test module '/workspace/vjepa2/tests/queue/test_fused_gather_add.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests/queue/test_fused_gather_add.py:4: in <module>\n    from src.models.utils.kernels.fused_gather_add import kernel_fn, baseline_fn, SHAPES\nE   ModuleNotFoundError: No module named 'src.models.utils.kernels.fused_gather_add'\n=========================== short test summary info ============================\nERROR tests/queue/test_fused_gather_add.py\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 2.70s\n",
+  "benchmark": null,
+  "benchmark_output": "",
+  "timestamp": "2026-04-02T05:36:56.576101"
+}

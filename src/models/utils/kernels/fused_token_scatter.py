@@ -23,45 +23,85 @@ def baseline_fn(src, indices, total_tokens, embed_dim):
 
 # --- KERNEL ---
 @triton.jit
-def _fused_token_scatter_fwd(
+def _token_scatter_fwd_kernel(
     SRC, IDX, OUT,
-    M, D: tl.constexpr,
+    B, M, D: tl.constexpr,
     total_tokens,
     BLOCK_D: tl.constexpr,
 ):
-    # pid = b * M + m
+    """Grid: (B * M,)
+    pid = b * M + m
+    Flattens indices to 1D [B*M] so IDX[pid] correctly loads the dest index.
+    """
     pid = tl.program_id(0)
     b = pid // M
     m = pid % M
 
-    # Load destination index
-    idx = tl.load(IDX + b * M + m)
+    idx = tl.load(IDX + pid).to(tl.int32)
 
-    src_base = SRC + (b * M + m) * D
-    out_base = OUT + (b * total_tokens + idx) * D
+    src_base = pid * D
+    out_base = (b * total_tokens + idx) * D
 
     for off in range(0, D, BLOCK_D):
         cols = off + tl.arange(0, BLOCK_D)
         mask = cols < D
-        val = tl.load(src_base + cols, mask=mask, other=0.0)
-        tl.store(out_base + cols, val, mask=mask)
+        val = tl.load(SRC + src_base + cols, mask=mask, other=0.0)
+        tl.store(OUT + out_base + cols, val, mask=mask)
+
+
+class FusedTokenScatter(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, src, indices, total_tokens, embed_dim):
+        B, M, D = src.shape
+        indices_flat = indices.flatten()  # [B*M]
+        ctx.save_for_backward(indices_flat)
+        ctx.total_tokens = total_tokens
+        ctx.B = B; ctx.M = M; ctx.D = D
+
+        out = torch.zeros(B, total_tokens, D, dtype=src.dtype, device=src.device)
+        BLOCK_D = min(triton.next_power_of_2(D), 2048)
+        _token_scatter_fwd_kernel[(B * M,)](
+            src, indices_flat, out,
+            B=B, M=M, D=D,
+            total_tokens=total_tokens,
+            BLOCK_D=BLOCK_D,
+            num_warps=min(8, max(1, BLOCK_D // 64)),
+        )
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        indices_flat, = ctx.saved_tensors
+        B, M, D = ctx.B, ctx.M, ctx.D
+        total_tokens = ctx.total_tokens
+
+        grad_src = torch.zeros(B * M, D, dtype=grad_out.dtype, device=grad_out.device)
+
+        @triton.jit
+        def _scatter_bwd(G, IDX, GS, B, M, D, total_tokens, BLOCK_D):
+            pid = tl.program_id(0)
+            b = pid // M
+            m = pid % M
+            idx = tl.load(IDX + pid).to(tl.int32)
+            src_base = pid * D
+            out_base = (b * total_tokens + idx) * D
+            for off in range(0, D, BLOCK_D):
+                cols = off + tl.arange(0, BLOCK_D)
+                mask = cols < D
+                g = tl.load(G + out_base + cols, mask=mask, other=0.0)
+                tl.store(GS + src_base + cols, g, mask=mask)
+
+        BLOCK_D = min(triton.next_power_of_2(D), 2048)
+        _scatter_bwd[(B * M,)](
+            grad_out, indices_flat, grad_src,
+            B, M, D, total_tokens, BLOCK_D=BLOCK_D,
+            num_warps=min(8, max(1, BLOCK_D // 64)),
+        )
+        return grad_src.view(B, M, D), None, None, None
 
 
 def kernel_fn(src, indices, total_tokens, embed_dim):
-    assert src.is_contiguous()
-    assert indices.is_contiguous()
-    B, M, D = src.shape
-    BLOCK_D = min(triton.next_power_of_2(D), 4096)
-    out = torch.zeros(B, total_tokens, D, dtype=src.dtype, device=src.device)
-    total_programs = B * M
-    _fused_token_scatter_fwd[(total_programs,)](
-        src, indices, out,
-        M=M, D=D,
-        total_tokens=total_tokens,
-        BLOCK_D=BLOCK_D,
-        num_warps=min(16, max(1, BLOCK_D // 32)),
-    )
-    return out
+    return FusedTokenScatter.apply(src, indices, total_tokens, embed_dim)
 
 
 def can_use_kernel(src, indices, total_tokens, embed_dim):

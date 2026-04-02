@@ -20,13 +20,13 @@ def _row_mean_fwd(X, Y, stride_row, N: tl.constexpr, BLOCK_N: tl.constexpr):
     X_ptr = X + row * stride_row
     Y_ptr = Y + row
 
-    acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+    acc = tl.cast(0.0, tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)
         mask = cols < N
         x = tl.load(X_ptr + cols, mask=mask, other=0.0).to(tl.float32)
-        acc = tl.where(mask, x, 0.0)
-        acc = tl.sum(acc, axis=0)
+        block_sum = tl.sum(tl.where(mask, x, 0.0), axis=0)
+        acc = acc + block_sum
 
     mean_val = acc / N
     tl.store(Y_ptr, mean_val)

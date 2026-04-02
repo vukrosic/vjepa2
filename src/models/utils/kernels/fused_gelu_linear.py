@@ -19,8 +19,8 @@ def baseline_fn(x, weight, bias):
 
 
 # --- KERNEL: fused gelu elementwise (separate pass before matmul) ---
-# Uses EXACT same formula as PyTorch default: x * 0.5 * (1 + erf(x / sqrt(2)))
-# NOT the tanh approximation which causes numerical mismatches.
+# Uses EXACT same formula as PyTorch: x * 0.5 * (1 + erf(x / sqrt(2)))
+# NOT the tanh approximation which causes numerical mismatches with F.gelu for float32.
 @triton.jit
 def _fused_gelu_fwd(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
@@ -29,7 +29,7 @@ def _fused_gelu_fwd(X, Y, N: tl.constexpr, BLOCK: tl.constexpr):
         idx = pid * BLOCK + i
         if idx < N:
             x = tl.load(X + idx).to(tl.float32)
-            # GELU exact (erf-based): matches PyTorch's default F.gelu
+            # GELU exact (erf-based): matches PyTorch's F.gelu for float32
             y = 0.5 * x * (1.0 + libdevice.erf(x * 0.7071067811865476))  # 1/sqrt(2)
             tl.store(Y + idx, y)
 

@@ -24,6 +24,7 @@ Official Pytorch codebase for V-JEPA 2, V-JEPA 2-AC, V-JEPA 2.1.
 ## Kernel Agent Docs
 
 If you are working on kernel queue experiments, read only these files first:
+- `AGENTS.md`
 - `KERNEL_AGENT_INSTRUCTIONS.md`
 - `KERNEL_AGENT_WORKLIST.md`
 - `KERNEL_PRIMOPS.md`

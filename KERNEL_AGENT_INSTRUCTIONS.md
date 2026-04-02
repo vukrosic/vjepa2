@@ -4,9 +4,10 @@ This is the canonical execution doc for kernel agents.
 
 Read only these files before you work:
 
-1. `KERNEL_AGENT_INSTRUCTIONS.md`
-2. `KERNEL_AGENT_WORKLIST.md`
-3. `KERNEL_PRIMOPS.md`
+1. `AGENTS.md`
+2. `KERNEL_AGENT_INSTRUCTIONS.md`
+3. `KERNEL_AGENT_WORKLIST.md`
+4. `KERNEL_PRIMOPS.md`
 
 Ignore every other markdown file unless a human explicitly points you at it.
 
@@ -21,13 +22,14 @@ Do not touch queue state casually.
 ## Hard Rules
 
 1. Work only on families listed in `KERNEL_AGENT_WORKLIST.md`.
-2. Do not hand-edit `queue/pending.jsonl`, `queue/completed.jsonl`, or `queue/results/*.json`.
-3. Do not invent a new kernel family unless a human explicitly asks.
-4. Keep `baseline_fn()` exact and boring.
-5. Keep `kernel_fn()` guarded and safe.
-6. If backward matters, prove it or fall back.
-7. One kernel family at a time. No variants until the base version is correct.
-8. Do not use `--skip-parity` unless a human explicitly tells you to.
+2. Treat `Locked / Done` families in that file as off-limits unless a human explicitly asks for a rerun.
+3. Do not hand-edit `queue/pending.jsonl`, `queue/completed.jsonl`, or `queue/results/*.json`.
+4. Do not invent a new kernel family unless a human explicitly asks.
+5. Keep `baseline_fn()` exact and boring.
+6. Keep `kernel_fn()` guarded and safe.
+7. If backward matters, prove it or fall back.
+8. One kernel family at a time. No variants until the base version is correct.
+9. Do not use `--skip-parity` unless a human explicitly tells you to.
 
 ## Exact Workflow
 
@@ -58,6 +60,12 @@ In that case:
 - do direct local function smoke if possible
 - leave the change ready for a real parity run
 - do not enqueue unless a human explicitly approves the exception
+
+Current environment note:
+
+- `pytest` is installed
+- `timm` is installed
+- queue agents are expected to run real parity locally before enqueueing
 
 ## Status Names
 
@@ -112,6 +120,8 @@ Do not spend time on:
 - speculative mega-fusions
 - kernels that already benchmark slower than eager on realistic shapes
 - custom backward work you cannot prove correct
+- stale import-error cleanup for trivial wrappers that are already fixed
+- non-exact training-path rewrites such as the current `fused_gelu_linear` family
 
 ## Queue Submission
 

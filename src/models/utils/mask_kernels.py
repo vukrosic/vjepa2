@@ -146,10 +146,13 @@ if TRITON_AVAILABLE:
             masks: Integer masks of shape [M, B, K] with M masks, indices in [0, N)
             Output: [M, B, K, D] tensor with gathered values
         """
-        m = tl.program_id(0)
-        b = tl.program_id(1)
-        k = tl.program_id(2)
-        d = tl.program_id(3)
+        pid = tl.program_id(0)
+        d = tl.program_id(1)
+
+        k = pid % K
+        tmp = pid // K
+        b = tmp % B
+        m = tmp // B
 
         cols = d * BLOCK_D + tl.arange(0, BLOCK_D)
         mask_cols = cols < D
@@ -201,10 +204,13 @@ if TRITON_AVAILABLE:
             masks: Integer masks of shape [M, K] with M masks, indices in [0, N) - broadcast across batch
             Output: [M, B, K, D] tensor with gathered values
         """
-        m = tl.program_id(0)
-        b = tl.program_id(1)
-        k = tl.program_id(2)
-        d = tl.program_id(3)
+        pid = tl.program_id(0)
+        d = tl.program_id(1)
+
+        k = pid % K
+        tmp = pid // K
+        b = tmp % B
+        m = tmp // B
 
         cols = d * BLOCK_D + tl.arange(0, BLOCK_D)
         mask_cols = cols < D
@@ -284,7 +290,7 @@ def triton_apply_masks(x, masks, concat=True):
         out = torch.empty((M, B, K, D), dtype=x.dtype, device=x.device)
         BLOCK_D = min(128, triton.next_power_of_2(D))
 
-        grid = (B, M, triton.cdiv(D, BLOCK_D))
+        grid = (M * B * K, triton.cdiv(D, BLOCK_D))
         triton_apply_masks_1d_batched_kernel[grid](
             x,
             masks_tensor,
@@ -320,7 +326,7 @@ def triton_apply_masks(x, masks, concat=True):
         out = torch.empty((M, B, K, D), dtype=x.dtype, device=x.device)
         BLOCK_D = min(128, triton.next_power_of_2(D))
 
-        grid = (M, B, triton.cdiv(D, BLOCK_D))
+        grid = (M * B * K, triton.cdiv(D, BLOCK_D))
         triton_apply_masks_2d_batched_kernel[grid](
             x,
             masks_tensor,
@@ -371,7 +377,7 @@ def triton_apply_masks_single(x, mask):
         out = torch.empty((B, K, D), dtype=x.dtype, device=x.device)
         BLOCK_D = min(128, triton.next_power_of_2(D))
 
-        grid = (B, triton.cdiv(K, 32), triton.cdiv(D, BLOCK_D))
+        grid = (B, K, triton.cdiv(D, BLOCK_D))
         triton_apply_masks_1d_kernel[grid](
             x,
             mask,
@@ -395,7 +401,7 @@ def triton_apply_masks_single(x, mask):
         out = torch.empty((B, K, D), dtype=x.dtype, device=x.device)
         BLOCK_D = min(128, triton.next_power_of_2(D))
 
-        grid = (B, triton.cdiv(K, 32), triton.cdiv(D, BLOCK_D))
+        grid = (B, K, triton.cdiv(D, BLOCK_D))
         triton_apply_masks_2d_kernel[grid](
             x,
             mask,

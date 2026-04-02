@@ -80,11 +80,11 @@ def _fused_rmsn_res_bwd(
 
     # RMSNorm backward:
     # d_norm = dy * w
-    # d_rms = -sum(d_norm * y) / (rms^3)
+    # d_rms = -sum(d_norm * y) / (D * rms^3)
     d_norm = dy * w
     d_rms = -tl.sum(d_norm * y, axis=0) / (rms2 * rms)
-    # dx = d_norm / rms + d_rms * 2*y / D
-    dx = d_norm * inv_rms + d_rms * 2.0 * y / D
+    # dx = d_norm / rms + d_rms * y / D
+    dx = d_norm * inv_rms + d_rms * y / D
     dx = tl.where(mask, dx, 0.0)
 
     tl.store(DX_ptr + row * stride_row + offs, dx.to(x.dtype), mask=mask)

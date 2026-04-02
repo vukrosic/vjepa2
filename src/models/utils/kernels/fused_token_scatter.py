@@ -81,7 +81,7 @@ class FusedTokenScatter(torch.autograd.Function):
         grad_src = torch.zeros(B * M, D, dtype=grad_out.dtype, device=grad_out.device)
 
         @triton.jit
-        def _scatter_bwd(G, IDX, GS, B, M, D, total_tokens, BLOCK_D):
+        def _scatter_bwd(G, IDX, GS, B, M, D: tl.constexpr, total_tokens, BLOCK_D: tl.constexpr):
             pid = tl.program_id(0)
             b = pid // M
             m = pid % M

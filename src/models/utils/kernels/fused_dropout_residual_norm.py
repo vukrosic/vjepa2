@@ -38,11 +38,10 @@ def _fused_dropout_residual_norm_fwd(
     x = tl.load(X_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
     r = tl.load(R_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
 
-    # Dropout: generate random mask using simple hash-based approach
-    # For simplicity we use block-level random - each element has probability P of being dropped
-    rng_offset = row * D + offs
-    # Simple hash-based pseudo-random for dropout mask
-    rand_val = tl.abs(tl.math.hash(tl.cast(rng_offset + SEED, tl.int32), 0)) / 4294967296.0
+    # Dropout: generate random mask using tl.rand (Philox random)
+    # Each element has probability (1-P) of being kept
+    rng_offs = row * D + offs
+    rand_val = tl.rand(SEED, rng_offs)
     keep_mask = rand_val > P
     x_drop = tl.where(keep_mask, x / (1.0 - P), 0.0)
 
@@ -82,13 +81,9 @@ def _fused_dropout_residual_norm_bwd(
 
     x = tl.load(X_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
     r = tl.load(R_ptr + row * stride_row + offs, mask=mask, other=0.0).to(tl.float32)
-    keep_mask = tl.load(MASK_PTR + row * stride_row + offs).to(tl.int32)
+    keep_mask = tl.load(MASK_PTR + row * stride_row + offs).to(tl.int8)
 
-    rng_offset = row * D + offs
-    rand_val = tl.abs(tl.math.hash(tl.cast(rng_offset, tl.int32), 0)) / 4294967296.0
-    keep = rand_val > P
-
-    x_drop = tl.where(keep, x / (1.0 - P), 0.0)
+    x_drop = tl.where(keep_mask != 0, x / (1.0 - P), 0.0)
     y = x_drop + r
 
     mean = tl.sum(tl.where(mask, y, 0.0), axis=0) / D
@@ -106,8 +101,8 @@ def _fused_dropout_residual_norm_bwd(
     dy_drop = d_yhat * inv_std + dvar * 2.0 * diff / D + dmean / D
     dy_drop = tl.where(mask, dy_drop, 0.0)
 
-    # dx = dy_drop * (keep / (1-P))
-    dx = tl.where(keep, dy_drop / (1.0 - P), 0.0)
+    # dx = dy_drop * (keep_mask / (1-P)) where keep_mask=1 means gradient flows
+    dx = tl.where(keep_mask != 0, dy_drop / (1.0 - P), 0.0)
     tl.store(DX_ptr + row * stride_row + offs, dx.to(x.dtype), mask=mask)
     tl.store(DR_ptr + row * stride_row + offs, dy_drop.to(x.dtype), mask=mask)
     tl.atomic_add(DW_ptr + offs, tl.where(mask, dy * y_hat, 0.0))
@@ -170,7 +165,7 @@ class FusedDropoutResidualNorm(torch.autograd.Function):
             dx.view(ctx.orig_shape),
             dr.view(ctx.orig_shape),
             dw.to(weight.dtype),
-            db.to(bias.dtype),
+            db.to(dy_c.dtype),
             None,
             None,
             None,

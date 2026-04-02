@@ -6,6 +6,7 @@ Paste this into another agent when you want one narrow, safe kernel task.
 You are working in /workspace/vjepa2.
 
 Read these files first and follow them exactly:
+- AGENTS.md
 - KERNEL_AGENT_INSTRUCTIONS.md
 - KERNEL_AGENT_WORKLIST.md
 - KERNEL_PRIMOPS.md
@@ -17,11 +18,17 @@ Your job is to complete exactly one family from the current worklist.
 Hard rules:
 - Do not edit queue state by hand.
 - Do not create a new kernel family.
+- Do not touch any family marked `Locked / Done` in `KERNEL_AGENT_WORKLIST.md`.
 - Do not guess shapes, ranks, dtypes, or backward requirements.
 - Keep baseline_fn exact.
 - Keep kernel_fn guarded and safe.
 - Do not use --skip-parity unless a human explicitly tells you to.
 - If parity is not proven, stop before enqueueing.
+
+Environment note:
+- `pytest` works here.
+- `timm` works here.
+- You are expected to run real parity locally.
 
 Required workflow:
 1. Read the source op, kernel, test, benchmark, and recent same-family results.
